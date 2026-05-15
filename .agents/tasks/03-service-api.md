@@ -1,5 +1,21 @@
 # Task 03: Core Service API
 
+Status: Completed for MVP.
+
+Implemented:
+
+- Fastify HTTP service in `packages/service`.
+- TCP receiver client with command queue and reconnect scheduling.
+- Mock mode.
+- CORS support for the desktop browser UI.
+- Normalized state store and WebSocket state stream.
+
+Verified by:
+
+- `npm run test:all`
+- Live service against CR-N775 at `192.168.1.104`
+- API command loop: volume set/restore and mute on/off.
+
 ## Goal
 
 Build the Fastify service that exposes HTTP/WebSocket control APIs and talks to the eISCP client boundary.
@@ -29,16 +45,23 @@ GET  /events
 
 ## Work Items
 
-- [ ] Create Fastify service package.
-- [ ] Add env config with validation.
-- [ ] Define normalized state model.
-- [ ] Implement in-memory state store.
-- [ ] Implement command controller interface.
-- [ ] Add service route handlers.
-- [ ] Add WebSocket event broadcasting.
-- [ ] Add reconnect-aware receiver client wrapper.
-- [ ] Add mock/offline mode for development.
-- [ ] Add unit tests for state reducer and routes.
+- [x] Create Fastify service package.
+- [x] Add env config with validation.
+- [x] Define normalized state model.
+- [x] Implement in-memory state store.
+- [x] Implement command controller interface.
+- [x] Add service route handlers.
+- [x] Add WebSocket event broadcasting.
+- [x] Add reconnect-aware receiver client wrapper.
+- [x] Add mock/offline mode for development.
+- [x] Add unit tests for state reducer.
+- [ ] Add dedicated Fastify route tests.
+
+## Follow-Up Work
+
+- Add route-level tests for request validation and HTTP error bodies.
+- Add deterministic reconnect tests with a mock receiver that drops and restores sockets.
+- Consider lowering unknown `NLS`/`NJA` logging level if NET list events are noisy in normal use.
 
 ## Acceptance Criteria
 
@@ -57,4 +80,3 @@ Return:
 - How to run service in mock mode
 - Tests run
 - Integration points needed from protocol package
-

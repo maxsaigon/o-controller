@@ -1,5 +1,15 @@
 # Codex UI/UX Tasks
 
+Status updated: 2026-05-15
+
+Current UI status:
+
+- Product UX docs exist in `docs/uiux-plan.md` and `docs/uiux-spec.md`.
+- React/Vite desktop companion UI exists in `apps/desktop`.
+- UI has been verified against mock service and a real CR-N775 through the service at `192.168.1.104`.
+- Visual QA notes and screenshot exist in `docs/uiux-review`.
+- Native Tauri menu bar/tray shell is not implemented yet.
+
 This file is reserved for Codex-owned UI/UX work. Claude Code agents should not edit this file or the files owned by this track.
 
 The UI/UX track should make O-Control feel like a compact macOS productivity remote, not a full media-center clone.
@@ -61,6 +71,8 @@ UI should not:
 
 ## UI/UX Task 01: Product UX Spec
 
+Status: Completed.
+
 Ownership:
 
 - `docs/uiux-plan.md`
@@ -68,13 +80,13 @@ Ownership:
 
 Work:
 
-- [ ] Define primary user workflows.
-- [ ] Define information hierarchy for menu bar popover.
-- [ ] Define all UI states: connected, disconnected, reconnecting, command pending, error, metadata missing.
-- [ ] Define keyboard shortcut behavior.
-- [ ] Define preset interaction behavior.
-- [ ] Define responsive behavior for optional web UI.
-- [ ] Define visual style: compact, calm, macOS-friendly, low distraction.
+- [x] Define primary user workflows.
+- [x] Define information hierarchy for menu bar popover.
+- [x] Define all UI states: connected, disconnected, reconnecting, command pending, error, metadata missing.
+- [x] Define keyboard shortcut behavior.
+- [x] Define preset interaction behavior.
+- [x] Define responsive behavior for optional web UI.
+- [x] Define visual style: compact, calm, macOS-friendly, low distraction.
 
 Acceptance:
 
@@ -86,6 +98,8 @@ Acceptance:
 
 ## UI/UX Task 02: Desktop Menu Bar Shell
 
+Status: Partial. Browser-hosted React UI is complete; native menu bar shell remains.
+
 Ownership:
 
 - `apps/desktop/src/app-shell/**`
@@ -95,15 +109,20 @@ Ownership:
 
 Work:
 
-- [ ] Build compact menu bar popover layout.
-- [ ] Add connection status area.
-- [ ] Add power/mute/play-pause icon controls.
-- [ ] Add volume slider with step buttons.
-- [ ] Add input selector.
-- [ ] Add preset row.
-- [ ] Add now-playing placeholder area.
-- [ ] Add settings surface for service URL and shortcuts.
-- [ ] Add disabled/pending/error visual states.
+- [x] Build compact menu bar popover layout.
+- [x] Add connection status area.
+- [x] Add power/mute/play-pause icon controls.
+- [x] Add volume slider with step buttons.
+- [x] Add input selector.
+- [x] Add preset row.
+- [x] Add now-playing placeholder area.
+- [x] Add settings surface for service URL and shortcuts.
+- [x] Add disabled/pending/error visual states.
+
+Remaining:
+
+- [ ] Add native Tauri menu bar/tray wrapper.
+- [ ] Verify native window sizing and focus behavior.
 
 Acceptance:
 
@@ -116,6 +135,8 @@ Acceptance:
 
 ## UI/UX Task 03: Interaction Design
 
+Status: Mostly complete for browser UI; native shortcut conflict handling remains.
+
 Ownership:
 
 - `docs/uiux-spec.md`
@@ -123,12 +144,12 @@ Ownership:
 
 Work:
 
-- [ ] Define volume drag behavior to avoid command floods.
-- [ ] Define command pending feedback.
-- [ ] Define reconnect/offline behavior.
+- [x] Define volume drag behavior to avoid command floods.
+- [x] Define command pending feedback.
+- [x] Define reconnect/offline behavior.
 - [ ] Define shortcut conflict/error behavior.
-- [ ] Define preset confirmation behavior for standby/power-off actions.
-- [ ] Define tooltip labels for icon-only buttons.
+- [x] Define preset confirmation behavior for standby/power-off actions.
+- [x] Define tooltip labels for icon-only buttons.
 
 Acceptance:
 
@@ -140,6 +161,8 @@ Acceptance:
 
 ## UI/UX Task 04: Visual QA
 
+Status: Partial. Connected state is verified and captured; more state matrix screenshots remain.
+
 Ownership:
 
 - `docs/uiux-review/**`
@@ -147,12 +170,14 @@ Ownership:
 
 Work:
 
-- [ ] Run desktop app against mock service.
-- [ ] Capture screenshots for normal, offline, pending, and metadata states.
-- [ ] Verify compact popover at expected sizes.
-- [ ] Verify text does not overlap.
-- [ ] Verify icon buttons and sliders are usable.
-- [ ] Record issues and fixes in `docs/uiux-review/`.
+- [x] Run desktop app against mock service.
+- [x] Run desktop app against real CR-N775 service.
+- [x] Capture screenshot for normal connected state.
+- [ ] Capture screenshots for offline, pending, error, and long metadata states.
+- [x] Verify compact popover at expected sizes.
+- [x] Verify text does not overlap in connected/settings states.
+- [x] Verify icon buttons and sliders are usable.
+- [x] Record issues and fixes in `docs/uiux-review/`.
 
 Acceptance:
 
@@ -163,6 +188,8 @@ Acceptance:
 ---
 
 ## UI/UX Task 05: Optional Web Debug UI
+
+Status: Not started. Lower priority because the desktop UI already runs in browser preview.
 
 Ownership:
 
@@ -183,4 +210,3 @@ Acceptance:
 
 - Web UI is clearly secondary.
 - It supports debugging without becoming a full media center.
-

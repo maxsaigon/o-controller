@@ -1,5 +1,16 @@
 # Project Repository
 
+Status updated: 2026-05-15.
+
+The MVP implementation is committed on `main` and verified against a real CR-N775.
+
+Current baseline commits:
+
+- `6579f7c` — Initial O-Control implementation
+- `0e8d89e` — Document real receiver verification
+
+New agents should branch from the latest `main` and use `.agents/task-index.md` to pick follow-up work.
+
 Canonical repository:
 
 ```text
@@ -32,7 +43,9 @@ codex/integration-review
 
 ## Agent Baseline Rule
 
-All agents should start from the same baseline commit. If the repo is empty, make an initial commit containing:
+All agents should start from the latest clean `main`.
+
+Historical note: if rebuilding from an empty repo, make an initial commit containing:
 
 - `README.md`
 - `o-control-desktop-companion-plan.md`
@@ -40,4 +53,3 @@ All agents should start from the same baseline commit. If the repo is empty, mak
 - root `package.json`
 - root `.gitignore`
 - initial workspace folders
-

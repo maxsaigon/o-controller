@@ -44,9 +44,27 @@ agent/code-09-nas-usb-spike
 - Return changed files, commands run, tests run, and unresolved risks.
 - Prefer tests around protocol, service state, and integration behavior.
 
+## Current Implementation Status
+
+Last updated: 2026-05-15.
+
+- Code Task 01 Reference Audit: completed.
+- Code Task 02 eISCP Protocol Package: completed.
+- Code Task 03 Core Service API: completed for MVP; route-level tests remain optional follow-up.
+- Code Task 04 Mock Receiver And Integration Tests: mostly complete; explicit reconnect simulation remains.
+- Code Task 05 Presets Logic: service/API complete; preset order tests remain.
+- Code Task 06 Docker And Homelab: config complete; Docker smoke test on target host remains.
+- Code Task 07 Raycast Extension: completed for local use; publish metadata/icon remain.
+- Code Task 08 Now Playing Backend: completed for MVP.
+- Code Task 09 NAS/USB Browser Spike: completed with recommendation to postpone.
+
+Real-device verification completed against CR-N775 at `192.168.1.104`.
+
 ---
 
 ## Code Task 01: Reference Audit
+
+Status: Completed.
 
 Ownership:
 
@@ -56,11 +74,11 @@ Ownership:
 
 Work:
 
-- [ ] Review `mkulesh/onpc`, `miracle2k/onkyo-eiscp`, `jhesch/integra`, `tillbaks/node-eiscp`, `ava-brn/lib-eiscp`, and `estbeetoo/node-red-contrib-eiscp`.
-- [ ] Document behavior O-Control should learn from, without copying GPL code.
-- [ ] Document eISCP packet format and MVP command groups.
-- [ ] Create a build/buy decision matrix.
-- [ ] Mark all unknowns that require real CR-N775 verification.
+- [x] Review `mkulesh/onpc`, `miracle2k/onkyo-eiscp`, `jhesch/integra`, `tillbaks/node-eiscp`, `ava-brn/lib-eiscp`, and `estbeetoo/node-red-contrib-eiscp`.
+- [x] Document behavior O-Control should learn from, without copying GPL code.
+- [x] Document eISCP packet format and MVP command groups.
+- [x] Create a build/buy decision matrix.
+- [x] Mark all unknowns that require real CR-N775 verification.
 
 Acceptance:
 
@@ -71,6 +89,8 @@ Acceptance:
 ---
 
 ## Code Task 02: eISCP Protocol Package
+
+Status: Completed.
 
 Ownership:
 
@@ -85,11 +105,11 @@ Do not edit:
 
 Work:
 
-- [ ] Implement eISCP packet builder.
-- [ ] Implement parser for complete, multiple, and partial packets.
-- [ ] Add command constants for power, volume, mute, input, playback, metadata basics.
-- [ ] Add volume hex conversion helpers.
-- [ ] Add unit tests and packet fixtures.
+- [x] Implement eISCP packet builder.
+- [x] Implement parser for complete, multiple, and partial packets.
+- [x] Add command constants for power, volume, mute, input, playback, metadata basics.
+- [x] Add volume hex conversion helpers.
+- [x] Add unit tests and packet fixtures.
 
 Expected API:
 
@@ -111,6 +131,8 @@ Acceptance:
 
 ## Code Task 03: Core Service API
 
+Status: Completed for MVP.
+
 Ownership:
 
 - `packages/service/**`
@@ -123,12 +145,12 @@ Do not edit:
 
 Work:
 
-- [ ] Create Fastify service package.
-- [ ] Add config validation for `ONKYO_HOST`, `ONKYO_PORT`, `O_CONTROL_PORT`, `LOG_LEVEL`.
-- [ ] Define normalized state model in shared types.
-- [ ] Implement state store and reducer.
-- [ ] Implement receiver client wrapper with reconnect behavior.
-- [ ] Implement REST endpoints:
+- [x] Create Fastify service package.
+- [x] Add config validation for `ONKYO_HOST`, `ONKYO_PORT`, `O_CONTROL_PORT`, `LOG_LEVEL`.
+- [x] Define normalized state model in shared types.
+- [x] Implement state store and reducer.
+- [x] Implement receiver client wrapper with reconnect behavior.
+- [x] Implement REST endpoints:
   - `GET /health`
   - `GET /state`
   - `POST /commands/power`
@@ -137,9 +159,10 @@ Work:
   - `POST /commands/input`
   - `POST /commands/playback`
   - `POST /presets/:id/run`
-- [ ] Implement WebSocket `/events`.
-- [ ] Add mock/offline mode.
-- [ ] Add tests for routes and reducer.
+- [x] Implement WebSocket `/events`.
+- [x] Add mock/offline mode.
+- [x] Add tests for reducer.
+- [ ] Add dedicated route-level tests.
 
 Acceptance:
 
@@ -151,6 +174,8 @@ Acceptance:
 
 ## Code Task 04: Mock Receiver And Integration Tests
 
+Status: Mostly complete.
+
 Ownership:
 
 - `tools/mock-receiver/**`
@@ -159,12 +184,12 @@ Ownership:
 
 Work:
 
-- [ ] Build TCP mock receiver on configurable port.
-- [ ] Respond to power, volume, mute, input query commands.
-- [ ] Simulate status events.
+- [x] Build TCP mock receiver on configurable port.
+- [x] Respond to power, volume, mute, input query commands.
+- [x] Simulate status events for command responses.
 - [ ] Simulate socket disconnect/reconnect.
-- [ ] Add integration test script for service against mock receiver.
-- [ ] Document how to run mock receiver.
+- [x] Add integration test script for service against mock receiver.
+- [x] Document how to run mock receiver.
 
 Acceptance:
 
@@ -174,6 +199,8 @@ Acceptance:
 ---
 
 ## Code Task 05: Presets Logic
+
+Status: Mostly complete.
 
 Ownership:
 
@@ -185,10 +212,10 @@ Do not edit desktop UI files. UI/UX track will render preset controls.
 
 Work:
 
-- [ ] Define `PresetDefinition`.
-- [ ] Add default presets: `Work Jazz`, `Focus Quiet`, `Stop`.
-- [ ] Implement preset execution in service.
-- [ ] Add `POST /presets/:id/run`.
+- [x] Define `PresetDefinition`.
+- [x] Add default presets: `Work Jazz`, `Focus Quiet`, `Stop`.
+- [x] Implement preset execution in service.
+- [x] Add `POST /presets/:id/run`.
 - [ ] Add tests for command order and error handling.
 
 Acceptance:
@@ -200,6 +227,8 @@ Acceptance:
 
 ## Code Task 06: Docker And Homelab
 
+Status: Mostly complete.
+
 Ownership:
 
 - `infra/docker/**`
@@ -209,12 +238,12 @@ Ownership:
 
 Work:
 
-- [ ] Add Dockerfile for service.
-- [ ] Add Docker Compose.
-- [ ] Add healthcheck.
-- [ ] Add restart policy.
-- [ ] Document Ubuntu 24.04/N100 deployment.
-- [ ] Document LAN/Tailscale usage and static IP requirement.
+- [x] Add Dockerfile for service.
+- [x] Add Docker Compose.
+- [x] Add healthcheck.
+- [x] Add restart policy.
+- [ ] Document detailed Ubuntu 24.04/N100 deployment runbook.
+- [x] Document LAN/Tailscale usage and static IP requirement.
 
 Acceptance:
 
@@ -226,6 +255,8 @@ Acceptance:
 
 ## Code Task 07: Raycast Extension
 
+Status: Completed for local use.
+
 Ownership:
 
 - `apps/raycast/**`
@@ -235,10 +266,10 @@ Do not edit service internals.
 
 Work:
 
-- [ ] Create Raycast extension skeleton.
-- [ ] Add service URL preference.
-- [ ] Implement power toggle, volume up/down/set, input switch, run preset.
-- [ ] Add readable errors when service is unreachable.
+- [x] Create Raycast extension skeleton.
+- [x] Add service URL preference.
+- [x] Implement power toggle, volume up/down/set, input switch, run preset.
+- [x] Add readable errors when service is unreachable.
 
 Acceptance:
 
@@ -248,6 +279,8 @@ Acceptance:
 ---
 
 ## Code Task 08: Now Playing Backend
+
+Status: Completed for MVP.
 
 Ownership:
 
@@ -259,11 +292,11 @@ Do not edit desktop UI files. UI/UX track owns display.
 
 Work:
 
-- [ ] Add metadata state fields: title, artist, album, playback, time, track.
-- [ ] Parse `NTI`, `NAT`, `NAL`, `NST`, `NTM`, `NTR`.
-- [ ] Add metadata query/update handling.
-- [ ] Add reducer tests.
-- [ ] Log unknown metadata events for real-device verification.
+- [x] Add metadata state fields: title, artist, album, playback, time, track.
+- [x] Parse `NTI`, `NAT`, `NAL`, `NST`, `NTM`, `NTR`.
+- [x] Add metadata query/update handling.
+- [x] Add reducer tests.
+- [x] Log unknown metadata events for real-device verification.
 
 Acceptance:
 
@@ -275,6 +308,8 @@ Acceptance:
 
 ## Code Task 09: NAS/USB Browser Spike
 
+Status: Completed with recommendation to postpone.
+
 Ownership:
 
 - `docs/nas-usb-browser-spike.md`
@@ -284,13 +319,12 @@ Do not edit production service/UI.
 
 Work:
 
-- [ ] Review reference behavior around `NLS`, `NLA`, navigation, and selection.
-- [ ] Identify required real CR-N775 logs.
-- [ ] Evaluate UX cost versus benefit.
-- [ ] Recommend build, postpone, or skip.
+- [x] Review reference behavior around `NLS`, `NLA`, navigation, and selection.
+- [x] Identify required real CR-N775 logs.
+- [x] Evaluate UX cost versus benefit.
+- [x] Recommend build, postpone, or skip.
 
 Acceptance:
 
 - Clear recommendation.
 - No production code changed.
-

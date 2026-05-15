@@ -1,5 +1,22 @@
 # Task 04: macOS Desktop UI Shell
 
+Status: Partial.
+
+Completed:
+
+- React/Vite desktop companion UI in `apps/desktop`.
+- Compact control surface with status, power, mute, volume, playback, input, presets, now playing, and service settings.
+- Uses service API and WebSocket only; no direct eISCP logic.
+- Verified in browser against mock mode and real CR-N775 service.
+- QA notes and screenshot exist in `docs/uiux-review`.
+
+Not completed:
+
+- Native Tauri shell.
+- macOS menu bar/tray behavior.
+- Native global shortcut registration.
+- Tailwind setup was intentionally skipped; CSS is currently plain CSS.
+
 ## Goal
 
 Build the Tauri + React desktop shell for O-Control's menu bar companion experience.
@@ -28,15 +45,21 @@ Compact macOS productivity remote:
 
 - [ ] Create Tauri + React + Tailwind skeleton.
 - [ ] Configure menu bar/tray behavior if available in selected Tauri setup.
-- [ ] Build compact control popover.
-- [ ] Add connection status display.
-- [ ] Add power, mute, play/pause buttons.
-- [ ] Add volume slider plus step buttons.
-- [ ] Add input selector.
-- [ ] Add preset row placeholder.
-- [ ] Add settings view for service URL.
-- [ ] Connect to mock service contract.
-- [ ] Handle loading, disconnected, command pending, and error states.
+- [x] Build compact control popover.
+- [x] Add connection status display.
+- [x] Add power, mute, play/pause buttons.
+- [x] Add volume slider plus step buttons.
+- [x] Add input selector.
+- [x] Add preset row placeholder.
+- [x] Add settings view for service URL.
+- [x] Connect to mock service contract.
+- [x] Handle loading, disconnected, command pending, and error states.
+
+## Follow-Up Work
+
+- Wrap the current verified UI in a native Tauri menu bar/tray app.
+- Verify native popover sizing, dark mode, keyboard focus, and screen-reader labels.
+- Add global shortcuts after the native shell exists.
 
 ## Acceptance Criteria
 
@@ -54,4 +77,3 @@ Return:
 - Screenshots if available
 - Commands run
 - Missing service contract assumptions
-

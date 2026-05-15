@@ -2,7 +2,16 @@
 
 This folder contains task briefs for running multiple Claude Code agents in parallel.
 
-The goal is to let each agent work on a bounded slice of O-Control, then return a patch/branch that can be reviewed and merged once at the end.
+The original goal was to let each agent work on a bounded slice of O-Control, then return a patch/branch that can be reviewed and merged once at the end.
+
+Current status: MVP is implemented, committed, and verified against a real CR-N775. Use this folder now as a handoff and follow-up planning area.
+
+Verified baseline:
+
+- `6579f7c` — Initial O-Control implementation
+- `0e8d89e` — Document real receiver verification
+- Real receiver: CR-N775 at `192.168.1.104`, eISCP TCP `60128`
+- Verified controls: state readback, volume set/restore, mute on/off, input readback, playback readback, desktop UI WebSocket updates
 
 ## Project Repository
 
@@ -10,15 +19,15 @@ The goal is to let each agent work on a bounded slice of O-Control, then return 
 https://github.com/maxsaigon/o-controller.git
 ```
 
-If this repo is still empty, create and commit the initial skeleton before assigning tasks to agents. Parallel agents should work from the same baseline commit.
+The repo is no longer empty. New agents should branch from the latest `main`.
 
 ## How To Use
 
 1. Clone `https://github.com/maxsaigon/o-controller.git`.
-2. Create the initial repo structure from `../o-control-desktop-companion-plan.md` if it does not exist yet.
-3. Copy this `.agents` folder into the repo root.
-4. Commit the initial skeleton.
-5. Assign implementation work from `.agents/claude-code-tasks.md` to Claude Code agents.
+2. Pull latest `main`.
+3. Read `.agents/task-index.md` first.
+4. Assign only remaining follow-up work from `.agents/task-index.md` or the per-task files.
+5. Use a focused branch for each follow-up task.
 6. Tell every agent:
    - You are not alone in the codebase.
    - Do not revert edits made by others.
@@ -26,35 +35,31 @@ If this repo is still empty, create and commit the initial skeleton before assig
    - If you need to touch another area, stop and report the need instead of changing it.
    - Return changed file paths, commands run, tests run, and unresolved risks.
 7. Keep Codex-owned UI/UX work in `.agents/codex-uiux-tasks.md`.
-8. After all tasks return, use `merge-review-checklist.md` for final review and integration.
+8. Use `merge-review-checklist.md` for final review and integration.
 
-## Recommended Parallel Batch
+## Recommended Next Batch
 
-The task plan is split into two non-overlapping tracks:
+The initial parallel batch is done. Recommended next work:
 
-- `claude-code-tasks.md`: code, protocol, service, tests, deployment, Raycast, backend metadata.
-- `codex-uiux-tasks.md`: desktop UI/UX, visual design, interaction behavior, UI QA.
+- Native desktop shell: wrap the verified React/Vite UI in Tauri menu bar/tray.
+- Reconnect/test hardening: add route tests and deterministic disconnect/reconnect tests.
+- Docker deployment: run and document Docker build/compose smoke test on target environment.
+- Shortcut/preset polish: add native global shortcuts and preset order tests after Tauri exists.
 
-Start Claude Code with:
+Defer:
 
-- Code Task 01: Reference Audit
-- Code Task 02: eISCP Protocol Package
-- Code Task 03: Core Service API
-- Code Task 04: Mock Receiver And Integration Tests
-
-Codex should own the UI/UX track from `codex-uiux-tasks.md`.
+- Separate `apps/web` debug UI unless current desktop preview is insufficient.
+- NAS/USB browser production work until more real CR-N775 logs exist.
 
 The older per-agent task files in `.agents/tasks/` are retained as granular references, but the two-track split above is the source of truth for avoiding overwrite conflicts.
 
 ## Merge Strategy
 
-Use a single integration pass after agents finish:
+For new follow-up work:
 
-1. Review protocol package first.
-2. Integrate service API against protocol package.
-3. Integrate desktop UI against service contract.
-4. Integrate tests and mock receiver.
-5. Integrate Docker/dev scripts.
-6. Add Raycast/Web UI/Now Playing only after the core service is green.
+1. Review ownership before editing.
+2. Preserve the working service API and shared types unless there is a tested migration.
+3. Run `npm run build`, `npm run lint`, `npm run test:all`, and `npm audit --audit-level=high`.
+4. If touching UI, test against `MOCK_MODE=true` and, when available, the real CR-N775 service.
 
 Do not merge feature branches blindly. The protocol/service boundary is the main risk.

@@ -1,5 +1,21 @@
 # Task 06: Presets And Shortcuts
 
+Status: Partial.
+
+Completed:
+
+- Preset schema in shared types.
+- Default presets in service.
+- `POST /presets/:id/run`.
+- Desktop preset buttons.
+- Settings UI includes shortcut reference.
+
+Not completed:
+
+- Native global shortcuts.
+- Shortcut conflict handling.
+- Dedicated preset execution order tests.
+
 ## Goal
 
 Add user workflow features on top of the core service and desktop app.
@@ -16,13 +32,19 @@ Coordinate carefully with service and desktop agents. Do not rewrite their archi
 
 ## Work Items
 
-- [ ] Define `PresetDefinition` schema.
-- [ ] Add default presets: `Work Jazz`, `Focus Quiet`, `Stop`.
-- [ ] Add service endpoint for running presets.
-- [ ] Add desktop preset buttons.
+- [x] Define `PresetDefinition` schema.
+- [x] Add default presets: `Work Jazz`, `Focus Quiet`, `Stop`.
+- [x] Add service endpoint for running presets.
+- [x] Add desktop preset buttons.
 - [ ] Add global shortcuts for volume, mute, play/pause, popover.
-- [ ] Add settings UI for service URL and shortcuts if feasible.
+- [x] Add settings UI for service URL and shortcuts if feasible.
 - [ ] Add tests for preset execution order.
+
+## Follow-Up Work
+
+- Wait for the native Tauri shell, then register global shortcuts there.
+- Add tests that verify preset command order and error handling.
+- Keep the UI label `Standby` for the `stop` preset to make the power-off behavior explicit.
 
 ## Acceptance Criteria
 
@@ -38,4 +60,3 @@ Return:
 - Presets added
 - Shortcuts added
 - Tests run
-
