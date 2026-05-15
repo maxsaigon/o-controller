@@ -4,7 +4,7 @@ Use this after all agent branches/patches return.
 
 Status updated: 2026-05-15.
 
-This checklist now reflects the integrated MVP in commit `6579f7c` plus real receiver README update in `0e8d89e`.
+This checklist now reflects the integrated MVP in commit `6579f7c`, real receiver README update in `0e8d89e`, and the completed code-track hardening work.
 
 ## Required Review Order
 
@@ -36,8 +36,8 @@ This checklist now reflects the integrated MVP in commit `6579f7c` plus real rec
 - [x] WebSocket broadcasts only normalized state/events, not raw unbounded logs by default.
 - [x] Config validates `ONKYO_HOST`, `ONKYO_PORT`, `O_CONTROL_PORT`, and log level.
 - [x] No receiver IP, token, or local secrets are hard-coded.
-- [ ] Dedicated route-level tests cover validation and HTTP errors.
-- [ ] Reconnect behavior is covered by deterministic integration tests.
+- [x] Dedicated route-level tests cover validation and HTTP errors.
+- [x] Reconnect behavior is covered by deterministic integration tests.
 
 ## UI Review
 
@@ -53,7 +53,7 @@ This checklist now reflects the integrated MVP in commit `6579f7c` plus real rec
 
 - [x] Unit tests cover packet builder/parser.
 - [x] Integration tests cover connect, query state, command send, and event receive.
-- [ ] Integration tests cover disconnect/reconnect.
+- [x] Integration tests cover disconnect/reconnect.
 - [x] Mock receiver supports at least power, volume, mute, input, and playback event simulation.
 - [x] `npm run test:all` runs from repo root.
 
@@ -63,6 +63,7 @@ This checklist now reflects the integrated MVP in commit `6579f7c` plus real rec
 - [x] Compose file has healthcheck and restart policy.
 - [x] Service URL and receiver IP are configured via env.
 - [x] README explains LAN-only and Tailscale usage.
+- [x] N100 deployment runbook exists at `docs/deployment-n100.md`.
 - [ ] Docker build/compose smoke test is recorded.
 
 ## Final Manual Checks

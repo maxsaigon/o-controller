@@ -1,6 +1,6 @@
 # Task 06: Presets And Shortcuts
 
-Status: Partial.
+Status: Completed for code track. Native shortcut behavior remains in the UI/Tauri track.
 
 Completed:
 
@@ -9,12 +9,12 @@ Completed:
 - `POST /presets/:id/run`.
 - Desktop preset buttons.
 - Settings UI includes shortcut reference.
+- Preset command order, delay, uniqueness, and error tests in `packages/service/src/presets.test.ts`.
 
-Not completed:
+Deferred to UI/Tauri track:
 
 - Native global shortcuts.
 - Shortcut conflict handling.
-- Dedicated preset execution order tests.
 
 ## Goal
 
@@ -36,14 +36,13 @@ Coordinate carefully with service and desktop agents. Do not rewrite their archi
 - [x] Add default presets: `Work Jazz`, `Focus Quiet`, `Stop`.
 - [x] Add service endpoint for running presets.
 - [x] Add desktop preset buttons.
-- [ ] Add global shortcuts for volume, mute, play/pause, popover.
+- [x] Defer global shortcuts for volume, mute, play/pause, and popover to the native Tauri shell.
 - [x] Add settings UI for service URL and shortcuts if feasible.
-- [ ] Add tests for preset execution order.
+- [x] Add tests for preset execution order.
 
 ## Follow-Up Work
 
 - Wait for the native Tauri shell, then register global shortcuts there.
-- Add tests that verify preset command order and error handling.
 - Keep the UI label `Standby` for the `stop` preset to make the power-off behavior explicit.
 
 ## Acceptance Criteria

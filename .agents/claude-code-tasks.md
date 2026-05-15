@@ -50,10 +50,10 @@ Last updated: 2026-05-15.
 
 - Code Task 01 Reference Audit: completed.
 - Code Task 02 eISCP Protocol Package: completed.
-- Code Task 03 Core Service API: completed for MVP; route-level tests remain optional follow-up.
-- Code Task 04 Mock Receiver And Integration Tests: mostly complete; explicit reconnect simulation remains.
-- Code Task 05 Presets Logic: service/API complete; preset order tests remain.
-- Code Task 06 Docker And Homelab: config complete; Docker smoke test on target host remains.
+- Code Task 03 Core Service API: completed. Route-level tests added.
+- Code Task 04 Mock Receiver And Integration Tests: completed. Disconnect/reconnect simulation tests added.
+- Code Task 05 Presets Logic: completed for code track. Preset order and error tests added. Global shortcuts deferred to Tauri.
+- Code Task 06 Docker And Homelab: completed. N100 deployment runbook added.
 - Code Task 07 Raycast Extension: completed for local use; publish metadata/icon remain.
 - Code Task 08 Now Playing Backend: completed for MVP.
 - Code Task 09 NAS/USB Browser Spike: completed with recommendation to postpone.
@@ -131,7 +131,7 @@ Acceptance:
 
 ## Code Task 03: Core Service API
 
-Status: Completed for MVP.
+Status: Completed.
 
 Ownership:
 
@@ -162,7 +162,7 @@ Work:
 - [x] Implement WebSocket `/events`.
 - [x] Add mock/offline mode.
 - [x] Add tests for reducer.
-- [ ] Add dedicated route-level tests.
+- [x] Add dedicated route-level tests.
 
 Acceptance:
 
@@ -174,7 +174,7 @@ Acceptance:
 
 ## Code Task 04: Mock Receiver And Integration Tests
 
-Status: Mostly complete.
+Status: Completed.
 
 Ownership:
 
@@ -187,7 +187,7 @@ Work:
 - [x] Build TCP mock receiver on configurable port.
 - [x] Respond to power, volume, mute, input query commands.
 - [x] Simulate status events for command responses.
-- [ ] Simulate socket disconnect/reconnect.
+- [x] Simulate socket disconnect/reconnect.
 - [x] Add integration test script for service against mock receiver.
 - [x] Document how to run mock receiver.
 
@@ -200,7 +200,7 @@ Acceptance:
 
 ## Code Task 05: Presets Logic
 
-Status: Mostly complete.
+Status: Completed for code track. Global shortcuts deferred to Tauri shell.
 
 Ownership:
 
@@ -216,7 +216,7 @@ Work:
 - [x] Add default presets: `Work Jazz`, `Focus Quiet`, `Stop`.
 - [x] Implement preset execution in service.
 - [x] Add `POST /presets/:id/run`.
-- [ ] Add tests for command order and error handling.
+- [x] Add tests for command order and error handling.
 
 Acceptance:
 
@@ -227,7 +227,7 @@ Acceptance:
 
 ## Code Task 06: Docker And Homelab
 
-Status: Mostly complete.
+Status: Completed.
 
 Ownership:
 
@@ -242,7 +242,7 @@ Work:
 - [x] Add Docker Compose.
 - [x] Add healthcheck.
 - [x] Add restart policy.
-- [ ] Document detailed Ubuntu 24.04/N100 deployment runbook.
+- [x] Document detailed Ubuntu 24.04/N100 deployment runbook.
 - [x] Document LAN/Tailscale usage and static IP requirement.
 
 Acceptance:

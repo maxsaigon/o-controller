@@ -11,7 +11,7 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "test:integration": "node --import tsx tests/integration/service-mock.test.ts",
+    "test:integration": "node --import tsx --test tests/integration/service-mock.test.ts tests/integration/disconnect-reconnect.test.ts",
     "test:all": "npm test && npm run test:integration",
     "dev:service": "npm run dev -w @o-control/service",
     "dev:mock": "npm run dev -w @o-control/mock-receiver",

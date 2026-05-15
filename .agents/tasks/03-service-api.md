@@ -15,6 +15,7 @@ Verified by:
 - `npm run test:all`
 - Live service against CR-N775 at `192.168.1.104`
 - API command loop: volume set/restore and mute on/off.
+- Dedicated Fastify route tests in `packages/service/src/server.test.ts`.
 
 ## Goal
 
@@ -55,12 +56,10 @@ GET  /events
 - [x] Add reconnect-aware receiver client wrapper.
 - [x] Add mock/offline mode for development.
 - [x] Add unit tests for state reducer.
-- [ ] Add dedicated Fastify route tests.
+- [x] Add dedicated Fastify route tests.
 
 ## Follow-Up Work
 
-- Add route-level tests for request validation and HTTP error bodies.
-- Add deterministic reconnect tests with a mock receiver that drops and restores sockets.
 - Consider lowering unknown `NLS`/`NJA` logging level if NET list events are noisy in normal use.
 
 ## Acceptance Criteria

@@ -1,6 +1,6 @@
 # Task 08: Docker And Homelab Deployment
 
-Status: Mostly complete.
+Status: Completed for docs and repo packaging. Deployment smoke validation remains.
 
 Completed:
 
@@ -9,11 +9,11 @@ Completed:
 - `.env.example`.
 - Healthcheck and restart policy.
 - README documents env-driven receiver host/port and verified local receiver command.
+- N100 deployment runbook at `docs/deployment-n100.md`.
 
 Not completed:
 
 - Actual Docker build/compose smoke test has not been recorded in this workspace.
-- N100-specific deployment runbook can be more detailed.
 
 ## Goal
 
@@ -39,11 +39,12 @@ Do not edit service logic except for minimal healthcheck support, and coordinate
 - [x] Document LAN/Tailscale deployment.
 - [x] Document static IP requirement for CR-N775.
 - [x] Document why discovery is optional and IP config is preferred.
+- [x] Document Ubuntu 24.04/N100 deployment, update, monitoring, and troubleshooting workflow.
 
 ## Follow-Up Work
 
 - Run `docker compose build` and `docker compose up` on the target host or a local Docker environment.
-- Document exact Ubuntu 24.04/N100 deployment steps, including service update/restart workflow.
+- Record a Docker build/compose smoke test on local Docker or the target N100 host.
 
 ## Acceptance Criteria
 

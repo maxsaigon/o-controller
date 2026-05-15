@@ -10,8 +10,10 @@ Verified baseline:
 
 - `6579f7c` — Initial O-Control implementation
 - `0e8d89e` — Document real receiver verification
+- Latest local update: Code-track hardening tests and N100 runbook
 - Real receiver: CR-N775 at `192.168.1.104`, eISCP TCP `60128`
 - Verified controls: state readback, volume set/restore, mute on/off, input readback, playback readback, desktop UI WebSocket updates
+- Automated verification: `npm run build`, `npm run lint`, `npm run test:all` with 133 passing tests, and `npm audit --audit-level=high`
 
 ## Project Repository
 
@@ -42,9 +44,8 @@ The repo is no longer empty. New agents should branch from the latest `main`.
 The initial parallel batch is done. Recommended next work:
 
 - Native desktop shell: wrap the verified React/Vite UI in Tauri menu bar/tray.
-- Reconnect/test hardening: add route tests and deterministic disconnect/reconnect tests.
-- Docker deployment: run and document Docker build/compose smoke test on target environment.
-- Shortcut/preset polish: add native global shortcuts and preset order tests after Tauri exists.
+- Shortcut and visual QA: add native global shortcuts, define conflict behavior, and capture additional UI states after Tauri exists.
+- Docker deployment validation: run and document Docker build/compose smoke test on target environment.
 
 Defer:
 

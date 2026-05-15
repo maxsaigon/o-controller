@@ -1,20 +1,17 @@
 # Task 05: Mock Receiver And Test Harness
 
-Status: Mostly complete.
+Status: Completed.
 
 Implemented:
 
 - TCP mock receiver in `tools/mock-receiver`.
 - Integration tests in `tests/integration/service-mock.test.ts`.
+- Disconnect/reconnect integration tests in `tests/integration/disconnect-reconnect.test.ts`.
 - Root scripts: `test:integration` and `test:all`.
 
 Verified by:
 
-- `npm run test:all` passes unit and integration tests.
-
-Not completed:
-
-- Explicit disconnect/reconnect simulation tests.
+- `npm run test:all` passes 133 tests across unit, route, and integration suites.
 
 ## Goal
 
@@ -36,13 +33,12 @@ Do not edit production service/protocol implementation except to add documented 
 - [x] Parse incoming eISCP commands using protocol package if available.
 - [x] Respond to query commands: power, volume, mute, input.
 - [x] Emit simulated status events for core command responses.
-- [ ] Support disconnect/reconnect simulation.
+- [x] Support disconnect/reconnect simulation.
 - [x] Add integration test script.
 - [x] Document how to run mock receiver.
 
 ## Follow-Up Work
 
-- Add tests for service reconnect after socket close/error.
 - Add tests for browser/API behavior while the receiver is temporarily disconnected.
 
 ## Acceptance Criteria
