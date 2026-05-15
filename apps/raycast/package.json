@@ -1,0 +1,99 @@
+{
+  "name": "o-control-raycast",
+  "version": "0.1.0",
+  "private": true,
+  "title": "O-Control",
+  "description": "Control your Onkyo CR-N775 receiver",
+  "icon": "command-icon.png",
+  "author": "maxsaigon",
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "power-toggle",
+      "title": "Power Toggle",
+      "subtitle": "O-Control",
+      "description": "Toggle receiver power on/off",
+      "mode": "no-view"
+    },
+    {
+      "name": "volume-up",
+      "title": "Volume Up",
+      "subtitle": "O-Control",
+      "description": "Increase volume by one step",
+      "mode": "no-view"
+    },
+    {
+      "name": "volume-down",
+      "title": "Volume Down",
+      "subtitle": "O-Control",
+      "description": "Decrease volume by one step",
+      "mode": "no-view"
+    },
+    {
+      "name": "volume-set",
+      "title": "Set Volume",
+      "subtitle": "O-Control",
+      "description": "Set volume to a specific level",
+      "mode": "no-view",
+      "arguments": [
+        {
+          "name": "level",
+          "type": "text",
+          "placeholder": "0-100",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "mute-toggle",
+      "title": "Mute Toggle",
+      "subtitle": "O-Control",
+      "description": "Toggle mute on/off",
+      "mode": "no-view"
+    },
+    {
+      "name": "input-switch",
+      "title": "Switch Input",
+      "subtitle": "O-Control",
+      "description": "Switch receiver input source",
+      "mode": "view"
+    },
+    {
+      "name": "run-preset",
+      "title": "Run Preset",
+      "subtitle": "O-Control",
+      "description": "Run a preset action",
+      "mode": "view"
+    },
+    {
+      "name": "show-status",
+      "title": "Show Status",
+      "subtitle": "O-Control",
+      "description": "Show current receiver status",
+      "mode": "view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "serviceUrl",
+      "title": "Service URL",
+      "description": "URL of the O-Control service",
+      "type": "textfield",
+      "required": true,
+      "default": "http://localhost:8787"
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.83.0",
+    "node-fetch": "^3.3.0"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "^2.1.1",
+    "typescript": "^5.5.0"
+  },
+  "scripts": {
+    "build": "ray build",
+    "dev": "ray develop",
+    "lint": "eslint src --ext .ts,.tsx && prettier --check src package.json"
+  }
+}

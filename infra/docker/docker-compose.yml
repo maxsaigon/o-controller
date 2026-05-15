@@ -1,0 +1,28 @@
+services:
+  o-control:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+    container_name: o-control
+    restart: unless-stopped
+    ports:
+      - "${O_CONTROL_PORT:-8787}:8787"
+    environment:
+      - ONKYO_HOST=${ONKYO_HOST:-192.168.1.50}
+      - ONKYO_PORT=${ONKYO_PORT:-60128}
+      - O_CONTROL_PORT=8787
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - MOCK_MODE=${MOCK_MODE:-false}
+    # Use host network if receiver discovery is needed
+    # network_mode: host
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8787/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
