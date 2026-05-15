@@ -1,6 +1,6 @@
 # Task 08: Docker And Homelab Deployment
 
-Status: Completed for docs and repo packaging. Deployment smoke validation remains.
+Status: Completed for docs, repo packaging, and local Docker smoke validation.
 
 Completed:
 
@@ -10,10 +10,7 @@ Completed:
 - Healthcheck and restart policy.
 - README documents env-driven receiver host/port and verified local receiver command.
 - N100 deployment runbook at `docs/deployment-n100.md`.
-
-Not completed:
-
-- Actual Docker build/compose smoke test has not been recorded in this workspace.
+- Docker Compose smoke test recorded with `MOCK_MODE=true` on host port `18787`.
 
 ## Goal
 
@@ -43,8 +40,7 @@ Do not edit service logic except for minimal healthcheck support, and coordinate
 
 ## Follow-Up Work
 
-- Run `docker compose build` and `docker compose up` on the target host or a local Docker environment.
-- Record a Docker build/compose smoke test on local Docker or the target N100 host.
+- Rerun the Docker compose smoke flow on the target N100 host and record host-specific notes.
 
 ## Acceptance Criteria
 

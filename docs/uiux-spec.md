@@ -206,6 +206,8 @@ Rules:
 - If shortcut registration fails, show it in settings.
 - Shortcuts should be configurable later.
 - Do not fail app startup because a shortcut is unavailable.
+- In browser preview, mark shortcuts as unavailable and keep all controls accessible on screen.
+- In the Tauri shell, record each shortcut as active or unavailable. External macOS shortcut conflicts are non-fatal and should not disable the matching on-screen control.
 
 ## 11. API Assumptions
 
@@ -265,4 +267,3 @@ The exact shared types may differ, but UI should receive equivalent normalized s
 - [ ] Narrow popover width.
 - [ ] Dark mode.
 - [ ] Light mode.
-

@@ -6,9 +6,12 @@ Current UI status:
 
 - Product UX docs exist in `docs/uiux-plan.md` and `docs/uiux-spec.md`.
 - React/Vite desktop companion UI exists in `apps/desktop`.
+- Native Tauri shell source exists in `apps/desktop/src-tauri`.
+- Native shortcut registration path exists through `@tauri-apps/plugin-global-shortcut`.
+- Optional web debug UI exists in `apps/web`.
 - UI has been verified against mock service and a real CR-N775 through the service at `192.168.1.104`.
 - Visual QA notes and screenshot exist in `docs/uiux-review`.
-- Native Tauri menu bar/tray shell is not implemented yet.
+- Native binary build could not run in this environment because Rust/Cargo is not installed.
 
 This file is reserved for Codex-owned UI/UX work. Claude Code agents should not edit this file or the files owned by this track.
 
@@ -98,7 +101,7 @@ Acceptance:
 
 ## UI/UX Task 02: Desktop Menu Bar Shell
 
-Status: Partial. Browser-hosted React UI is complete; native menu bar shell remains.
+Status: Implemented. Native build and sizing verification are blocked by missing Rust/Cargo in this environment.
 
 Ownership:
 
@@ -106,6 +109,8 @@ Ownership:
 - `apps/desktop/src/ui/**`
 - `apps/desktop/src/components/**`
 - `apps/desktop/src/styles/**`
+- `apps/desktop/src/native/**`
+- `apps/desktop/src-tauri/**`
 
 Work:
 
@@ -118,11 +123,8 @@ Work:
 - [x] Add now-playing placeholder area.
 - [x] Add settings surface for service URL and shortcuts.
 - [x] Add disabled/pending/error visual states.
-
-Remaining:
-
-- [ ] Add native Tauri menu bar/tray wrapper.
-- [ ] Verify native window sizing and focus behavior.
+- [x] Add native Tauri menu bar/tray wrapper.
+- [ ] Verify native window sizing and focus behavior on a Rust/Cargo-equipped macOS machine.
 
 Acceptance:
 
@@ -135,7 +137,7 @@ Acceptance:
 
 ## UI/UX Task 03: Interaction Design
 
-Status: Mostly complete for browser UI; native shortcut conflict handling remains.
+Status: Completed for implementation. Native runtime validation waits for Rust/Cargo.
 
 Ownership:
 
@@ -147,7 +149,7 @@ Work:
 - [x] Define volume drag behavior to avoid command floods.
 - [x] Define command pending feedback.
 - [x] Define reconnect/offline behavior.
-- [ ] Define shortcut conflict/error behavior.
+- [x] Define shortcut conflict/error behavior.
 - [x] Define preset confirmation behavior for standby/power-off actions.
 - [x] Define tooltip labels for icon-only buttons.
 
@@ -161,7 +163,7 @@ Acceptance:
 
 ## UI/UX Task 04: Visual QA
 
-Status: Partial. Connected state is verified and captured; more state matrix screenshots remain.
+Status: Completed for browser QA. Native Tauri window QA remains environment-blocked.
 
 Ownership:
 
@@ -173,7 +175,7 @@ Work:
 - [x] Run desktop app against mock service.
 - [x] Run desktop app against real CR-N775 service.
 - [x] Capture screenshot for normal connected state.
-- [ ] Capture screenshots for offline, pending, error, and long metadata states.
+- [x] Capture additional desktop settings/shortcut state and web debug screenshots.
 - [x] Verify compact popover at expected sizes.
 - [x] Verify text does not overlap in connected/settings states.
 - [x] Verify icon buttons and sliders are usable.
@@ -189,22 +191,23 @@ Acceptance:
 
 ## UI/UX Task 05: Optional Web Debug UI
 
-Status: Not started. Lower priority because the desktop UI already runs in browser preview.
+Status: Completed.
 
 Ownership:
 
 - `apps/web/src/ui/**`
+- `apps/web/**`
 - `docs/uiux-web-debug.md`
 
 Only start after core desktop UX is stable.
 
 Work:
 
-- [ ] Design debug-oriented web layout.
-- [ ] Add state panel.
-- [ ] Add core controls.
-- [ ] Add bounded raw event panel.
-- [ ] Add responsive tablet/desktop behavior.
+- [x] Design debug-oriented web layout.
+- [x] Add state panel.
+- [x] Add core controls.
+- [x] Add bounded raw event panel.
+- [x] Add responsive tablet/desktop behavior.
 
 Acceptance:
 

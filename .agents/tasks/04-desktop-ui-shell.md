@@ -1,6 +1,6 @@
 # Task 04: macOS Desktop UI Shell
 
-Status: Partial.
+Status: Implemented. Native build and sizing verification require Rust/Cargo, which is not installed in this environment.
 
 Completed:
 
@@ -9,12 +9,13 @@ Completed:
 - Uses service API and WebSocket only; no direct eISCP logic.
 - Verified in browser against mock mode and real CR-N775 service.
 - QA notes and screenshot exist in `docs/uiux-review`.
+- Native Tauri shell source under `apps/desktop/src-tauri`.
+- macOS tray/menu-bar entry and close-to-tray behavior.
+- Native global shortcut registration path through `@tauri-apps/plugin-global-shortcut`.
 
 Not completed:
 
-- Native Tauri shell.
-- macOS menu bar/tray behavior.
-- Native global shortcut registration.
+- Native binary build and runtime sizing QA on a Rust/Cargo-equipped macOS machine.
 - Tailwind setup was intentionally skipped; CSS is currently plain CSS.
 
 ## Goal
@@ -43,8 +44,8 @@ Compact macOS productivity remote:
 
 ## Work Items
 
-- [ ] Create Tauri + React + Tailwind skeleton.
-- [ ] Configure menu bar/tray behavior if available in selected Tauri setup.
+- [x] Create Tauri + React shell skeleton.
+- [x] Configure menu bar/tray behavior if available in selected Tauri setup.
 - [x] Build compact control popover.
 - [x] Add connection status display.
 - [x] Add power, mute, play/pause buttons.
@@ -57,9 +58,8 @@ Compact macOS productivity remote:
 
 ## Follow-Up Work
 
-- Wrap the current verified UI in a native Tauri menu bar/tray app.
 - Verify native popover sizing, dark mode, keyboard focus, and screen-reader labels.
-- Add global shortcuts after the native shell exists.
+- Install Rust/Cargo and run `npm run tauri:build -w @o-control/desktop`.
 
 ## Acceptance Criteria
 

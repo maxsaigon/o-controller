@@ -81,6 +81,13 @@ If this fails:
 
 ## 5. Build and Start
 
+Recommended deployment model:
+- Development and UI verification run on the Mac with host Node.
+- Docker Compose on the Mac is used only for occasional smoke tests.
+- Production should eventually pull a prebuilt image from CI/GHCR, so the N100 does not spend time installing Node dependencies or compiling TypeScript.
+
+The current Compose file still supports local builds, which is useful before CI image publishing is wired up:
+
 ```bash
 cd /opt/o-control
 
@@ -94,6 +101,26 @@ docker compose -f infra/docker/docker-compose.yml up -d
 docker compose -f infra/docker/docker-compose.yml ps
 docker compose -f infra/docker/docker-compose.yml logs -f --tail=20
 ```
+
+### Local Compose Smoke Result
+
+Verified on 2026-05-15 from the project workspace:
+
+```bash
+COMPOSE_PROJECT_NAME=o-control-smoke O_CONTROL_PORT=18787 MOCK_MODE=true LOG_LEVEL=silent docker compose -f infra/docker/docker-compose.yml up -d --build
+curl http://127.0.0.1:18787/health
+COMPOSE_PROJECT_NAME=o-control-smoke O_CONTROL_PORT=18787 MOCK_MODE=true LOG_LEVEL=silent docker compose -f infra/docker/docker-compose.yml down
+```
+
+Health response:
+
+```json
+{"status":"ok","connected":true,"mockMode":true,"uptime":5.406830211}
+```
+
+The smoke run builds the service image, starts it in mock mode, verifies the HTTP health endpoint through Docker port mapping, and removes the container/network afterwards.
+
+Local Docker builds on macOS can be slow the first time because Docker pulls the Node base image and installs workspace dependencies inside Linux. Subsequent runs should be faster because the Dockerfile uses BuildKit npm cache mounts and `.dockerignore` keeps UI, docs screenshots, tests, and Tauri build output out of the Docker context. If local iteration is still slow, keep using `npm run dev:service` for development and reserve `docker compose ... up -d --build` for release checks.
 
 ## 6. Verify Service
 

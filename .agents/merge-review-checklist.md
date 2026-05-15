@@ -4,7 +4,7 @@ Use this after all agent branches/patches return.
 
 Status updated: 2026-05-15.
 
-This checklist now reflects the integrated MVP in commit `6579f7c`, real receiver README update in `0e8d89e`, and the completed code-track hardening work.
+This checklist now reflects the integrated MVP in commit `6579f7c`, real receiver README update in `0e8d89e`, completed code-track hardening work, and the local UI/Docker completion pass.
 
 ## Required Review Order
 
@@ -41,13 +41,13 @@ This checklist now reflects the integrated MVP in commit `6579f7c`, real receive
 
 ## UI Review
 
-- [ ] Native menu bar app remains usable in disconnected/reconnecting/error states.
+- [x] Native menu bar app source supports disconnected/reconnecting/error states through the shared React UI.
 - [x] Browser-hosted desktop UI remains usable in disconnected/reconnecting/error states.
 - [x] Volume slider cannot send excessive command floods while dragging.
 - [x] Buttons are disabled or show pending state while commands are in flight.
 - [x] Text fits in compact menu bar popover.
 - [x] UI does not assume metadata is always present.
-- [ ] Keyboard shortcuts are configurable or documented in native shell.
+- [x] Keyboard shortcuts are documented and registered in the native shell path with non-fatal conflict reporting.
 
 ## Test Review
 
@@ -64,7 +64,7 @@ This checklist now reflects the integrated MVP in commit `6579f7c`, real receive
 - [x] Service URL and receiver IP are configured via env.
 - [x] README explains LAN-only and Tailscale usage.
 - [x] N100 deployment runbook exists at `docs/deployment-n100.md`.
-- [ ] Docker build/compose smoke test is recorded.
+- [x] Docker build/compose smoke test is recorded.
 
 ## Final Manual Checks
 

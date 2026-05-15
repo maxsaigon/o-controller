@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { InputId, OControlState, PlaybackCommand, PresetDefinition } from '@o-control/shared';
 import { Settings, Wifi, WifiOff } from 'lucide-react';
 import { CommandBar } from '../components/CommandBar';
@@ -9,6 +9,8 @@ import { PresetStrip } from '../components/PresetStrip';
 import { ServiceSettings } from '../components/ServiceSettings';
 import { StatusHeader } from '../components/StatusHeader';
 import { VolumeControl } from '../components/VolumeControl';
+import type { ShortcutStatus } from '../native/shortcuts';
+import { registerDesktopShortcuts, SHORTCUTS, toggleNativePopover, unregisterDesktopShortcuts } from '../native/shortcuts';
 import { useOControlApi } from '../ui/useOControlApi';
 
 const DEFAULT_SERVICE_URL = 'http://localhost:8787';
@@ -18,6 +20,9 @@ export function DesktopShell() {
     return window.localStorage.getItem('o-control.serviceUrl') ?? DEFAULT_SERVICE_URL;
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [shortcutStatus, setShortcutStatus] = useState<ShortcutStatus[]>(() => {
+    return SHORTCUTS.map((shortcut) => ({ ...shortcut, registered: false, error: null }));
+  });
   const api = useOControlApi(serviceUrl);
 
   const presets = useMemo<PresetDefinition[]>(() => {
@@ -60,6 +65,24 @@ export function DesktopShell() {
     await api.command(`/presets/${id}/run`, {}, `preset:${id}`);
   }
 
+  useEffect(() => {
+    let cancelled = false;
+    void registerDesktopShortcuts({
+      volumeUp: () => setVolume('up'),
+      volumeDown: () => setVolume('down'),
+      mute: runMute,
+      playPause: () => runPlayback(api.state.playback === 'playing' ? 'pause' : 'play'),
+      togglePopover: toggleNativePopover,
+    }).then((statuses) => {
+      if (!cancelled) setShortcutStatus(statuses);
+    });
+
+    return () => {
+      cancelled = true;
+      void unregisterDesktopShortcuts();
+    };
+  }, [api.state.playback, serviceUrl]);
+
   const state: OControlState = api.state;
   const receiverAvailable = api.serviceReachable && state.connected;
 
@@ -78,6 +101,7 @@ export function DesktopShell() {
             serviceUrl={serviceUrl}
             serviceReachable={api.serviceReachable}
             error={api.error}
+            shortcutStatus={shortcutStatus}
             onChangeServiceUrl={updateServiceUrl}
             onBack={() => setSettingsOpen(false)}
             onTest={api.refresh}

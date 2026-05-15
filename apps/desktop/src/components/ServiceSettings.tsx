@@ -1,17 +1,21 @@
 import { ArrowLeft, RotateCw } from 'lucide-react';
 import { useState } from 'react';
+import type { ShortcutStatus } from '../native/shortcuts';
 
 type Props = {
   serviceUrl: string;
   serviceReachable: boolean;
   error: string | null;
+  shortcutStatus: ShortcutStatus[];
   onChangeServiceUrl: (url: string) => void;
   onBack: () => void;
   onTest: () => void;
 };
 
-export function ServiceSettings({ serviceUrl, serviceReachable, error, onChangeServiceUrl, onBack, onTest }: Props) {
+export function ServiceSettings({ serviceUrl, serviceReachable, error, shortcutStatus, onChangeServiceUrl, onBack, onTest }: Props) {
   const [draft, setDraft] = useState(serviceUrl);
+  const shortcutErrors = shortcutStatus.filter((shortcut) => shortcut.error);
+  const nativeShellMissing = shortcutErrors.every((shortcut) => shortcut.error?.includes('Tauri shell'));
 
   return (
     <section className="settings-view">
@@ -45,10 +49,24 @@ export function ServiceSettings({ serviceUrl, serviceReachable, error, onChangeS
 
       <div className="shortcut-list">
         <h3>Shortcuts</h3>
-        <p><kbd>Cmd</kbd><kbd>Shift</kbd><kbd>Up</kbd> Volume up</p>
-        <p><kbd>Cmd</kbd><kbd>Shift</kbd><kbd>Down</kbd> Volume down</p>
-        <p><kbd>Cmd</kbd><kbd>Shift</kbd><kbd>Space</kbd> Play/pause</p>
+        {shortcutStatus.map((shortcut) => (
+          <p key={shortcut.id}>
+            <kbd>{shortcut.display}</kbd>
+            <span>{shortcut.label}</span>
+            <small className={shortcut.registered ? 'shortcut-ok' : 'shortcut-unavailable'}>
+              {shortcut.registered ? 'Active' : 'Unavailable'}
+            </small>
+          </p>
+        ))}
       </div>
+
+      {shortcutErrors.length > 0 ? (
+        <p className="shortcut-note">
+          {nativeShellMissing
+            ? 'Native shortcuts activate in the Tauri shell. Browser preview keeps every control available on screen.'
+            : 'Shortcut conflicts are non-fatal. If macOS or another app already owns a shortcut, O-Control leaves the control available on screen and reports it here.'}
+        </p>
+      ) : null}
 
       {error ? <p className="inline-error">{error}</p> : null}
     </section>

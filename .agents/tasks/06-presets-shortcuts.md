@@ -1,6 +1,6 @@
 # Task 06: Presets And Shortcuts
 
-Status: Completed for code track. Native shortcut behavior remains in the UI/Tauri track.
+Status: Completed.
 
 Completed:
 
@@ -10,11 +10,8 @@ Completed:
 - Desktop preset buttons.
 - Settings UI includes shortcut reference.
 - Preset command order, delay, uniqueness, and error tests in `packages/service/src/presets.test.ts`.
-
-Deferred to UI/Tauri track:
-
-- Native global shortcuts.
-- Shortcut conflict handling.
+- Native global shortcut registration path in the Tauri shell.
+- Shortcut conflict/unavailable state reporting in Settings.
 
 ## Goal
 
@@ -36,14 +33,14 @@ Coordinate carefully with service and desktop agents. Do not rewrite their archi
 - [x] Add default presets: `Work Jazz`, `Focus Quiet`, `Stop`.
 - [x] Add service endpoint for running presets.
 - [x] Add desktop preset buttons.
-- [x] Defer global shortcuts for volume, mute, play/pause, and popover to the native Tauri shell.
+- [x] Add global shortcuts for volume, mute, play/pause, and popover to the native Tauri shell.
 - [x] Add settings UI for service URL and shortcuts if feasible.
 - [x] Add tests for preset execution order.
 
 ## Follow-Up Work
 
-- Wait for the native Tauri shell, then register global shortcuts there.
 - Keep the UI label `Standby` for the `stop` preset to make the power-off behavior explicit.
+- Verify actual macOS shortcut registration after Rust/Cargo is installed and the Tauri shell can run.
 
 ## Acceptance Criteria
 

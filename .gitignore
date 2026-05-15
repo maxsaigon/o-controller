@@ -8,3 +8,4 @@ coverage/
 .turbo/
 .cache/
 tmp/
+apps/desktop/src-tauri/target/

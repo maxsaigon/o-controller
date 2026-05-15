@@ -11,9 +11,12 @@ Verified baseline:
 - `6579f7c` — Initial O-Control implementation
 - `0e8d89e` — Document real receiver verification
 - Latest local update: Code-track hardening tests and N100 runbook
+- Latest local update: Tauri shell source, web debug UI, visual QA screenshots, and Docker smoke validation
 - Real receiver: CR-N775 at `192.168.1.104`, eISCP TCP `60128`
 - Verified controls: state readback, volume set/restore, mute on/off, input readback, playback readback, desktop UI WebSocket updates
 - Automated verification: `npm run build`, `npm run lint`, `npm run test:all` with 133 passing tests, and `npm audit --audit-level=high`
+- Docker Compose smoke: mock-mode image built and `/health` passed on host port `18787`
+- Native Tauri build is environment-blocked until Rust/Cargo is installed
 
 ## Project Repository
 
@@ -43,13 +46,12 @@ The repo is no longer empty. New agents should branch from the latest `main`.
 
 The initial parallel batch is done. Recommended next work:
 
-- Native desktop shell: wrap the verified React/Vite UI in Tauri menu bar/tray.
-- Shortcut and visual QA: add native global shortcuts, define conflict behavior, and capture additional UI states after Tauri exists.
-- Docker deployment validation: run and document Docker build/compose smoke test on target environment.
+- Native build validation: install Rust/Cargo, run `npm run tauri:build -w @o-control/desktop`, then verify macOS tray sizing/focus behavior.
+- Target deployment validation: rerun the Docker compose smoke flow on the actual N100 host and record host-specific notes.
+- Distribution polish: add publish-ready icon/metadata for Raycast/native app if distributing.
 
 Defer:
 
-- Separate `apps/web` debug UI unless current desktop preview is insufficient.
 - NAS/USB browser production work until more real CR-N775 logs exist.
 
 The older per-agent task files in `.agents/tasks/` are retained as granular references, but the two-track split above is the source of truth for avoiding overwrite conflicts.

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "O-Control",
+  "version": "0.1.0",
+  "identifier": "com.maxsaigon.o-control",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "O-Control",
+        "width": 392,
+        "height": 620,
+        "minWidth": 360,
+        "minHeight": 540,
+        "resizable": false,
+        "fullscreen": false,
+        "center": true,
+        "visible": true,
+        "decorations": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src http://localhost:8787 http://127.0.0.1:8787 ws://localhost:8787 ws://127.0.0.1:8787"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"]
+  }
+}

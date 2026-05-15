@@ -1,11 +1,12 @@
 # Task 07: Web Debug UI
 
-Status: Not started.
+Status: Completed.
 
 Decision note:
 
 - The React/Vite desktop UI already runs in a browser at `http://127.0.0.1:5173` and has been verified against the real receiver.
 - A separate `apps/web` debug UI is optional and should only be built if there is a clear debugging need beyond the current desktop preview.
+- Implemented as a secondary service console in `apps/web`.
 
 ## Goal
 
@@ -22,12 +23,12 @@ Do not edit desktop app or service internals.
 
 ## Work Items
 
-- [ ] Create web app shell.
-- [ ] Connect to service `/state` and `/events`.
-- [ ] Build control surface for power, volume, mute, input, playback.
-- [ ] Add raw event/debug panel.
-- [ ] Add responsive layout for desktop/tablet.
-- [ ] Add disconnected/error states.
+- [x] Create web app shell.
+- [x] Connect to service `/state` and `/events`.
+- [x] Build control surface for power, volume, mute, input, playback.
+- [x] Add raw event/debug panel.
+- [x] Add responsive layout for desktop/tablet.
+- [x] Add disconnected/error states.
 
 ## Follow-Up Work
 

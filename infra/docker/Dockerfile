@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 FROM node:20-alpine AS builder
 
 WORKDIR /app
@@ -11,8 +13,8 @@ COPY packages/shared/ packages/shared/
 COPY packages/eiscp/ packages/eiscp/
 COPY packages/service/ packages/service/
 
-# Install dependencies
-RUN npm install --ignore-scripts
+# Install dependencies. BuildKit keeps the npm cache between local smoke runs.
+RUN --mount=type=cache,target=/root/.npm npm install --ignore-scripts
 
 # Build all packages in order
 RUN npm run build -w @o-control/shared
@@ -35,8 +37,8 @@ COPY --from=builder /app/packages/eiscp/dist/ packages/eiscp/dist/
 COPY --from=builder /app/packages/service/package.json packages/service/package.json
 COPY --from=builder /app/packages/service/dist/ packages/service/dist/
 
-# Install production dependencies only
-RUN npm install --omit=dev --ignore-scripts
+# Install production dependencies only. The npm cache also helps repeated deploy builds.
+RUN --mount=type=cache,target=/root/.npm npm install --omit=dev --ignore-scripts
 
 # Non-root user
 RUN addgroup -g 1001 ocontrol && adduser -D -u 1001 -G ocontrol ocontrol

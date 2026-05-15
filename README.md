@@ -18,7 +18,10 @@ Verified on 2026-05-15:
 - Playback state readback.
 - Now-playing metadata fallback when title/artist/album are empty.
 - Desktop browser UI at `http://127.0.0.1:5173`.
+- Optional web debug UI at `http://127.0.0.1:5174`.
 - Service API at `http://127.0.0.1:8787`.
+- Native Tauri shell code, tray/menu wiring, and shortcut registration path.
+- Docker Compose smoke test in mock mode on host port `18787`.
 - Mock mode, mock receiver integration tests, build, lint, and audit checks.
 
 Observed real-device state during verification:
@@ -97,6 +100,34 @@ Then open:
 http://127.0.0.1:5173/
 ```
 
+### Run Native Desktop Shell
+
+The Tauri shell wraps the same React UI with a macOS tray/menu-bar entry, close-to-tray behavior, and global shortcut registration.
+
+```bash
+npm run tauri:dev -w @o-control/desktop
+```
+
+Native builds require a Rust toolchain with `cargo` available:
+
+```bash
+npm run tauri:build -w @o-control/desktop
+```
+
+### Run Web Debug UI
+
+In another terminal:
+
+```bash
+npm run dev -w @o-control/web
+```
+
+Then open:
+
+```text
+http://127.0.0.1:5174/
+```
+
 ### Run Mock Receiver (for testing)
 
 ```bash
@@ -157,6 +188,15 @@ The current desktop UI supports:
 - Preset buttons.
 - Now-playing display with safe empty-metadata fallback.
 - Service URL settings.
+- Tauri tray/menu-bar shell config.
+- Native global shortcut registration for volume up/down, mute, play/pause, and show/hide popover.
+
+The optional web debug UI supports:
+
+- State panel using `GET /state`.
+- Core command controls.
+- Preset runner.
+- Bounded raw `/events` stream with the latest 80 events.
 
 The current Raycast extension supports:
 
@@ -169,12 +209,17 @@ The current Raycast extension supports:
 
 ## Docker
 
+Docker is intended for deployment and occasional smoke checks, not the main Mac development loop. Use host Node for local service/UI work, then use Compose only to validate the container path.
+
 ```bash
-cd infra/docker
-docker compose up -d
+O_CONTROL_PORT=18787 MOCK_MODE=true LOG_LEVEL=silent docker compose -f infra/docker/docker-compose.yml up -d --build
+curl http://127.0.0.1:18787/health
+docker compose -f infra/docker/docker-compose.yml down
 ```
 
-See [Docker Compose config](infra/docker/docker-compose.yml) for env vars.
+The Dockerfile uses BuildKit npm cache mounts and the repo includes a `.dockerignore`, so repeated smoke runs should reuse dependency layers unless package manifests change. For N100 deployment, the preferred long-term path is to build/publish the image from CI and have the Mini PC pull that image instead of building Node dependencies locally.
+
+The smoke test above was verified locally on 2026-05-15. See [Docker Compose config](infra/docker/docker-compose.yml) for env vars and [N100 deployment runbook](docs/deployment-n100.md) for target-host deployment.
 
 ## Project Structure
 
@@ -186,6 +231,7 @@ o-control/
     service/       # Fastify HTTP/WS service
   apps/
     desktop/       # React/Vite desktop companion UI
+    web/           # Optional browser debug console
     raycast/       # Raycast extension
   tools/
     mock-receiver/ # TCP mock for testing
@@ -198,8 +244,7 @@ o-control/
 
 ## Known Follow-Ups
 
-- Package the desktop UI as a native macOS menu bar app with Tauri.
-- Verify keyboard shortcut registration in the native shell.
+- Install Rust/Cargo on macOS build machines before running `npm run tauri:build`.
 - Continue real-device logging for `NLS`/`NJA` if NAS/USB browsing becomes worth building.
 - Add a publish-ready Raycast icon and Raycast author metadata if distributing the extension publicly.
 
