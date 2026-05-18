@@ -193,10 +193,12 @@ export class ReceiverClient extends EventEmitter {
       [COMMANDS.MUTE_ON]: { command: 'AMT', rawPayload: '01' },
       [COMMANDS.MUTE_OFF]: { command: 'AMT', rawPayload: '00' },
       [COMMANDS.INPUT_QUERY]: { command: 'SLI', rawPayload: '2B' },
-      [COMMANDS.TITLE_QUERY]: { command: 'NTI', rawPayload: 'Mock Song' },
-      [COMMANDS.ARTIST_QUERY]: { command: 'NAT', rawPayload: 'Mock Artist' },
-      [COMMANDS.ALBUM_QUERY]: { command: 'NAL', rawPayload: 'Mock Album' },
+      [COMMANDS.TITLE_QUERY]: { command: 'NTI', rawPayload: 'Khúc Giao Mùa (Chờ Đông) - A Very Long Title That Should Wrap Properly' },
+      [COMMANDS.ARTIST_QUERY]: { command: 'NAT', rawPayload: 'Various Artists featuring Some Exceptionally Long Names' },
+      [COMMANDS.ALBUM_QUERY]: { command: 'NAL', rawPayload: 'The Greatest Hits Album Featuring Remastered Tracks (Deluxe Edition)' },
       [COMMANDS.PLAYBACK_STATUS_QUERY]: { command: 'NST', rawPayload: 'P--' },
+      [COMMANDS.TIME_QUERY]: { command: 'NTM', rawPayload: '01:23/04:56' },
+      [COMMANDS.TRACK_QUERY]: { command: 'NTR', rawPayload: '0002/0015' },
     };
 
     // Handle volume set commands (MVLxx)

@@ -1,28 +1,182 @@
 # O-Control
 
-Desktop companion for controlling an Onkyo CR-N775 receiver via eISCP protocol.
+O-Control is a small macOS menu-bar controller for an Onkyo CR-N775 / N775 receiver.
+
+The intended flow is simple:
+
+```text
+Install app -> set receiver IP -> control N775
+```
+
+The app talks to the receiver over Onkyo eISCP on TCP port `60128`. A local service is bundled with the macOS app and is started by the Tauri shell, so normal use does not require running a separate server by hand.
 
 ## Current Status
 
-O-Control has been implemented and verified against a real Onkyo CR-N775 on the local network.
+O-Control has been verified against a real Onkyo CR-N775 on the local network.
 
 Verified on 2026-05-15:
 
-- TCP eISCP connection to CR-N775 on port `60128`.
-- Live state query through the service API.
-- Real-time WebSocket state updates in the desktop UI.
-- Power state readback.
-- Volume readback and volume set.
+- TCP eISCP connection to the receiver on port `60128`.
+- Power state readback and power toggle.
+- Volume readback, volume up/down, and volume set.
 - Mute on/off.
-- Input readback.
-- Playback state readback.
-- Now-playing metadata fallback when title/artist/album are empty.
-- Desktop browser UI at `http://127.0.0.1:5173`.
-- Optional web debug UI at `http://127.0.0.1:5174`.
-- Service API at `http://127.0.0.1:8787`.
-- Native Tauri shell code, tray/menu wiring, and shortcut registration path.
-- Docker Compose smoke test in mock mode on host port `18787`.
-- Mock mode, mock receiver integration tests, build, lint, and audit checks.
+- Input readback and input switching.
+- Playback status readback and playback controls.
+- Now-playing fallback when title, artist, or album are empty.
+- Real-time state updates in the desktop UI.
+- Native macOS Tauri shell with tray/menu wiring.
+- Local service sidecar startup path.
+- Global shortcut registration path.
+
+The receiver also emits NET/USB list events such as `NLS` and album-art URL events such as `NJA`. Those are logged for future investigation but are not part of the current product.
+
+## Product Architecture
+
+```text
+macOS menu-bar app
+        |
+        | HTTP + WebSocket on localhost
+        v
+local O-Control service
+        |
+        | TCP eISCP :60128
+        v
+Onkyo CR-N775 / N775
+```
+
+## Install And Use
+
+### Receiver Setup
+
+Before using the app:
+
+- Enable Network Standby on the receiver.
+- Give the receiver a static IP or DHCP reservation.
+- Confirm the receiver is reachable from the Mac on the same local network.
+
+The verified local setup used:
+
+```text
+Receiver IP: 192.168.1.104
+eISCP port: 60128
+```
+
+### Build The macOS App
+
+Requirements:
+
+- Node.js 20+
+- Rust toolchain with `cargo`
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Build the standalone macOS app:
+
+```bash
+npm run build:app
+```
+
+The `.app` and `.dmg` outputs are written under:
+
+```text
+apps/desktop/src-tauri/target/release/bundle/
+```
+
+### First Run
+
+1. Open O-Control.
+2. Open Settings from the popover.
+3. Set the receiver IP address.
+4. Leave the port as `60128`.
+5. Test the connection.
+6. Use the menu-bar popover to control power, volume, mute, input, playback, and presets.
+
+## Controls
+
+The desktop app supports:
+
+- Connection status and receiver summary.
+- Power toggle.
+- Volume slider and step up/down buttons.
+- Mute toggle.
+- Input selector for CD, NET, USB, Bluetooth, Line, and Tuner.
+- Playback controls: play, pause, stop, previous, next.
+- Preset buttons.
+- Now-playing display with safe fallback for missing metadata.
+- Native global shortcuts for volume, mute, play/pause, and show/hide.
+
+Default presets:
+
+| Preset | ID | Behavior |
+| --- | --- | --- |
+| Work Jazz | `work-jazz` | Power on -> NET -> Volume 22 -> Unmute |
+| Focus Quiet | `focus-quiet` | Volume 12 -> Unmute |
+| Standby | `stop` | Stop playback -> Standby |
+
+## Development
+
+For normal product work, use the Tauri desktop shell:
+
+```bash
+npm run tauri:dev -w @o-control/desktop
+```
+
+To run only the service against a real receiver:
+
+```bash
+ONKYO_HOST=192.168.1.104 ONKYO_PORT=60128 O_CONTROL_PORT=8787 MOCK_MODE=false npm run dev:service
+```
+
+To run the service without a receiver:
+
+```bash
+MOCK_MODE=true npm run dev:service
+```
+
+To run the browser preview of the desktop UI:
+
+```bash
+npm run dev -w @o-control/desktop -- --host 127.0.0.1
+```
+
+Then open:
+
+```text
+http://127.0.0.1:5173/
+```
+
+Run tests:
+
+```bash
+npm test
+```
+
+Run integration tests:
+
+```bash
+npm run test:integration
+```
+
+## Local Service API
+
+The desktop app uses this localhost API internally.
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/health` | GET | Health check |
+| `/state` | GET | Full receiver state |
+| `/presets` | GET | List presets |
+| `/commands/power` | POST | `{ action: "on" \| "off" \| "toggle" }` |
+| `/commands/volume` | POST | `{ value: "up" \| "down" \| 0-100 }` |
+| `/commands/mute` | POST | `{ action: "on" \| "off" \| "toggle" }` |
+| `/commands/input` | POST | `{ input: "cd" \| "net" \| "usb" \| "bluetooth" \| "line" \| "tuner" }` |
+| `/commands/playback` | POST | `{ action: "play" \| "pause" \| "stop" \| "next" \| "previous" }` |
+| `/presets/:id/run` | POST | Run a preset |
+| `/events` | WS | Real-time state stream |
 
 Observed real-device state during verification:
 
@@ -37,216 +191,45 @@ Observed real-device state during verification:
 }
 ```
 
-The receiver also emits NET/USB list events such as `NLS` and album art URL events such as `NJA`; these are logged for future NAS/USB browser work but are intentionally outside the MVP control surface.
+## Repository Map
 
-## Architecture
-
-```
-Desktop UI / Raycast / Web UI
-              │
-        HTTP + WebSocket
-              │
-       O-Control Service
-              │
-        TCP eISCP :60128
-              │
-       Onkyo CR-N775
-```
-
-## Quick Start
-
-### Prerequisites
-
-- Node.js 20+
-- Onkyo CR-N775 with Network Standby enabled and a static IP
-
-### Install
-
-```bash
-npm install
-```
-
-### Run in Mock Mode (no receiver needed)
-
-```bash
-MOCK_MODE=true npm run dev:service
-```
-
-### Run with Real Receiver
-
-```bash
-cp .env.example .env
-# Edit .env with your receiver's IP
-npm run dev:service
-```
-
-For the verified local CR-N775 setup:
-
-```bash
-ONKYO_HOST=192.168.1.104 ONKYO_PORT=60128 O_CONTROL_PORT=8787 MOCK_MODE=false npm run dev:service
-```
-
-### Run Desktop UI
-
-In another terminal:
-
-```bash
-npm run dev -w @o-control/desktop -- --host 127.0.0.1
-```
-
-Then open:
+Core product code:
 
 ```text
-http://127.0.0.1:5173/
+packages/eiscp/       eISCP packet builder/parser
+packages/service/     Local HTTP/WebSocket service and receiver TCP client
+packages/shared/      Shared types and command constants
+apps/desktop/         macOS Tauri app and React popover UI
 ```
 
-### Run Native Desktop Shell
-
-The Tauri shell wraps the same React UI with a macOS tray/menu-bar entry, close-to-tray behavior, and global shortcut registration.
-
-```bash
-npm run tauri:dev -w @o-control/desktop
-```
-
-Native builds require a Rust toolchain with `cargo` available:
-
-```bash
-npm run tauri:build -w @o-control/desktop
-```
-
-### Run Web Debug UI
-
-In another terminal:
-
-```bash
-npm run dev -w @o-control/web
-```
-
-Then open:
+Supporting tools:
 
 ```text
-http://127.0.0.1:5174/
+tools/mock-receiver/  TCP mock for tests
+tests/integration/    Service integration tests
+apps/web/             Optional debug console
+apps/raycast/         Optional Raycast extension
+infra/docker/         Optional container smoke/deployment path
+docs/                 Protocol notes and planning documents
 ```
 
-### Run Mock Receiver (for testing)
+## Scope Boundary
 
-```bash
-npm run dev:mock
-```
+In scope now:
 
-### Run Tests
+- Reliable local macOS control of one Onkyo CR-N775 / N775.
+- Static receiver IP configuration.
+- Core remote-control actions.
+- Basic now-playing state when the receiver provides it.
 
-```bash
-npm test
-```
+Out of scope for the current product:
 
-### Run Integration Tests
-
-```bash
-npm run test:integration
-```
-
-### Run All Verification Tests
-
-```bash
-npm run test:all
-```
-
-## API
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check |
-| `/state` | GET | Full receiver state |
-| `/presets` | GET | List presets |
-| `/commands/power` | POST | `{ action: "on" \| "off" \| "toggle" }` |
-| `/commands/volume` | POST | `{ value: "up" \| "down" \| 0-100 }` |
-| `/commands/mute` | POST | `{ action: "on" \| "off" \| "toggle" }` |
-| `/commands/input` | POST | `{ input: "cd" \| "net" \| "usb" \| ... }` |
-| `/commands/playback` | POST | `{ action: "play" \| "pause" \| "stop" \| ... }` |
-| `/presets/:id/run` | POST | Run a preset by ID |
-| `/events` | WS | Real-time state stream |
-
-## Presets
-
-| Preset | ID | Description |
-|--------|----|-------------|
-| Work Jazz | `work-jazz` | Power on → NET → Volume 22 |
-| Focus Quiet | `focus-quiet` | Volume 12 → Unmute |
-| Standby | `stop` | Stop → Standby |
-
-## Verified Control Surface
-
-The current desktop UI supports:
-
-- Connection status and receiver summary.
-- Power toggle.
-- Mute toggle.
-- Volume slider plus step up/down buttons.
-- Playback controls.
-- Input selector for CD, NET, USB, Bluetooth, Line, and Tuner.
-- Preset buttons.
-- Now-playing display with safe empty-metadata fallback.
-- Service URL settings.
-- Tauri tray/menu-bar shell config.
-- Native global shortcut registration for volume up/down, mute, play/pause, and show/hide popover.
-
-The optional web debug UI supports:
-
-- State panel using `GET /state`.
-- Core command controls.
-- Preset runner.
-- Bounded raw `/events` stream with the latest 80 events.
-
-The current Raycast extension supports:
-
-- Power toggle.
-- Volume up/down/set.
-- Mute toggle.
-- Input switch.
-- Preset runner.
-- Status viewer.
-
-## Docker
-
-Docker is intended for deployment and occasional smoke checks, not the main Mac development loop. Use host Node for local service/UI work, then use Compose only to validate the container path.
-
-```bash
-O_CONTROL_PORT=18787 MOCK_MODE=true LOG_LEVEL=silent docker compose -f infra/docker/docker-compose.yml up -d --build
-curl http://127.0.0.1:18787/health
-docker compose -f infra/docker/docker-compose.yml down
-```
-
-The Dockerfile uses BuildKit npm cache mounts and the repo includes a `.dockerignore`, so repeated smoke runs should reuse dependency layers unless package manifests change. For N100 deployment, the preferred long-term path is to build/publish the image from CI and have the Mini PC pull that image instead of building Node dependencies locally.
-
-The smoke test above was verified locally on 2026-05-15. See [Docker Compose config](infra/docker/docker-compose.yml) for env vars and [N100 deployment runbook](docs/deployment-n100.md) for target-host deployment.
-
-## Project Structure
-
-```
-o-control/
-  packages/
-    shared/        # Types, constants, contracts
-    eiscp/         # eISCP packet builder/parser
-    service/       # Fastify HTTP/WS service
-  apps/
-    desktop/       # React/Vite desktop companion UI
-    web/           # Optional browser debug console
-    raycast/       # Raycast extension
-  tools/
-    mock-receiver/ # TCP mock for testing
-  tests/
-    integration/   # End-to-end tests
-  infra/
-    docker/        # Dockerfile + Compose
-  docs/            # Protocol notes, audit, etc.
-```
-
-## Known Follow-Ups
-
-- Install Rust/Cargo on macOS build machines before running `npm run tauri:build`.
-- Continue real-device logging for `NLS`/`NJA` if NAS/USB browsing becomes worth building.
-- Add a publish-ready Raycast icon and Raycast author metadata if distributing the extension publicly.
+- Full NAS/USB browser.
+- Album art.
+- Multi-zone control.
+- UDP discovery.
+- macOS Control Center widgets.
+- Homelab/N100 deployment as the primary path.
 
 ## License
 

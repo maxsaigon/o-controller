@@ -13,9 +13,10 @@ function labelForPreset(preset: PresetDefinition) {
 
 export function PresetStrip({ presets, pendingCommand, disabled, onRun }: Props) {
   return (
-    <section className="control-band">
-      <div className="section-heading">
-        <span>Presets</span>
+    <section className="sheet-panel preset-sheet" aria-label="Presets">
+      <div className="sheet-heading">
+        <h2>Presets</h2>
+        <span>Quick receiver routines</span>
       </div>
       <div className="preset-row">
         {presets.map((preset) => {

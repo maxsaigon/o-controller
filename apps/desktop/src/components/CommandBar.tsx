@@ -1,47 +1,51 @@
 import type { OControlState } from '@o-control/shared';
-import { Power, Volume2, VolumeX } from 'lucide-react';
+import { ListMusic, SlidersHorizontal, Volume2, VolumeX, Wifi } from 'lucide-react';
+import { inputLabel } from './StatusHeader';
 
 type Props = {
   state: OControlState;
-  disabled: boolean;
   receiverAvailable: boolean;
-  pendingCommand: string | null;
-  onPower: () => void;
-  onMute: () => void;
+  activePanel: 'input' | 'volume' | 'presets' | null;
+  onOpenInput: () => void;
+  onOpenVolume: () => void;
+  onOpenSettings: () => void;
+  onOpenPresets: () => void;
 };
 
-export function CommandBar({ state, disabled, receiverAvailable, pendingCommand, onPower, onMute }: Props) {
-  const powerPending = pendingCommand === 'power';
-  const mutePending = pendingCommand === 'mute';
-
+export function CommandBar({ state, receiverAvailable, activePanel, onOpenInput, onOpenVolume, onOpenSettings, onOpenPresets }: Props) {
   return (
-    <section className="control-band command-band" aria-label="Primary receiver controls">
+    <nav className="command-rail" aria-label="Primary actions">
       <button
-        className={`icon-action power ${state.power === 'on' ? 'active' : ''}`}
+        className={activePanel === 'input' ? 'active' : ''}
         type="button"
-        title={state.power === 'on' ? 'Standby' : 'Power on'}
-        disabled={disabled || powerPending}
-        onClick={onPower}
+        title="Choose input"
+        disabled={!receiverAvailable}
+        onClick={onOpenInput}
       >
-        <Power size={18} />
-        <span>{powerPending ? '...' : state.power === 'on' ? 'On' : 'Power'}</span>
+        <Wifi size={18} />
+        <span>{inputLabel(state.input)}</span>
       </button>
 
       <button
-        className={`icon-action ${state.muted ? 'active danger' : ''}`}
+        className={`${activePanel === 'volume' ? 'active' : ''} ${state.muted ? 'muted' : ''}`}
         type="button"
-        title={state.muted ? 'Unmute' : 'Mute'}
-        disabled={!receiverAvailable || mutePending}
-        onClick={onMute}
+        title="Volume"
+        disabled={!receiverAvailable}
+        onClick={onOpenVolume}
       >
         {state.muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-        <span>{mutePending ? '...' : state.muted ? 'Muted' : 'Mute'}</span>
+        <span>{state.muted ? 'Muted' : `Vol ${state.volume}`}</span>
       </button>
 
-      <div className="power-state">
-        <span>Power</span>
-        <strong>{state.power === 'unknown' ? '--' : state.power === 'off' ? 'Standby' : 'On'}</strong>
-      </div>
-    </section>
+      <button type="button" title="Settings" onClick={onOpenSettings}>
+        <SlidersHorizontal size={18} />
+        <span>Settings</span>
+      </button>
+
+      <button className={activePanel === 'presets' ? 'active' : ''} type="button" title="Presets" disabled={!receiverAvailable} onClick={onOpenPresets}>
+        <ListMusic size={18} />
+        <span>More</span>
+      </button>
+    </nav>
   );
 }

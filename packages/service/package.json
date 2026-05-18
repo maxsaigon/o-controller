@@ -6,6 +6,7 @@
   "main": "./dist/index.js",
   "scripts": {
     "build": "tsc",
+    "build:sidecar": "node build-sidecar.mjs",
     "dev": "node --import tsx src/index.ts",
     "test": "node --import tsx --test src/**/*.test.ts",
     "start": "node dist/index.js"
@@ -21,6 +22,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.19.17",
+    "esbuild": "^0.25.0",
     "tsx": "^4.19.0",
     "typescript": "^5.5.0"
   }

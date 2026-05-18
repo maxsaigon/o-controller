@@ -124,9 +124,16 @@ Tone:
 
 - Compact
 - Calm
-- Utility-like
+- Hi-fi remote inspired
 - macOS-friendly
 - Low distraction
+
+Reference direction:
+
+- Use the attached Onkyo Hi-res mobile screenshots as the primary mood reference.
+- Borrow the quiet dark surface, warm lower gradient, thin outline icons, centered receiver/source hierarchy, and bottom command rail.
+- Adapt the pattern to a macOS menu bar popover instead of cloning the mobile layout.
+- The desktop app should feel like a small premium audio remote, not a generic settings utility.
 
 Avoid:
 
@@ -135,13 +142,14 @@ Avoid:
 - Decorative gradients/orbs
 - One-color theme
 - Text-heavy explanatory UI
+- iPhone status bar, phone navigation chrome, or full mobile screen proportions
 
 Suggested palette:
 
-- Background: near-white in light mode, near-black in dark mode.
-- Primary text: system foreground.
-- Secondary text: muted system gray.
-- Accent: restrained green/blue for connected and active states.
+- Background: charcoal/near-black primary surface with a subtle warm brown lower band.
+- Primary text: soft off-white, not pure white.
+- Secondary text: muted gray.
+- Accent: Onkyo-like blue for active power/input/selected states.
 - Warning/error: system amber/red only when needed.
 
 Suggested dimensions:
@@ -207,4 +215,3 @@ UI does not:
 - Open sockets to the receiver.
 - Parse raw receiver events.
 - Hard-code receiver IP.
-

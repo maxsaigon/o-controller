@@ -8,45 +8,40 @@ Default popover:
 
 ```text
 +--------------------------------------+
-| O-Control             Connected  NET |
-| CR-N775                 Vol 26       |
+| [Home]        O-Control        [Power]|
+|               CR-N775                 |
+|                 NET                   |
 +--------------------------------------+
-| [Power]  [Mute]       Volume    26   |
-| [-]  [===========o------]  [+]       |
+|                                      |
+|        Now playing / artwork         |
+|                                      |
+|        Title                         |
+|        Artist / Album / Format       |
+|                                      |
+|   [Repeat] [Prev] [Play] [Next]      |
 +--------------------------------------+
-| [Prev]     [Play/Pause]     [Next]   |
-+--------------------------------------+
-| Input                                |
-| [CD] [NET] [USB] [BT] [Line]         |
-+--------------------------------------+
-| Presets                              |
-| [Work Jazz] [Focus Quiet] [Stop]     |
-+--------------------------------------+
-| Now Playing                          |
-| Title or "No track info"             |
-| Artist - Album                       |
-+--------------------------------------+
-| [Settings]                 [Debug]   |
+| [Input]      [Volume 26]   [Settings]|
 +--------------------------------------+
 ```
 
 Popover rules:
 
-- Width should be stable between 340 and 380 px.
+- Width should be stable between 360 and 420 px.
 - Main controls stay visible without scrolling.
 - If content overflows, settings/debug can scroll below the fold.
 - No nested cards.
-- Use separators or subtle bands instead of floating cards.
+- Use dark surfaces, thin separators, and a bottom command rail instead of floating cards.
+- The visual reference is the Onkyo Hi-res mobile app screenshots, adapted to desktop popover ergonomics.
 
 ## 2. Status Header
 
 Content:
 
-- App name: `O-Control`
-- Connection state pill/icon
-- Receiver model if known
-- Current input
-- Current volume
+- Home/back icon area
+- Centered app/receiver identity
+- Current input/source label
+- Power button on the right
+- Connection state in compact form, not a large pill in the normal state
 
 States:
 
@@ -64,6 +59,7 @@ Behavior:
 - Status should be readable at a glance.
 - Clicking status can open diagnostics/settings later.
 - Do not use long explanatory copy in normal state.
+- Prefer centered, airy typography similar to the reference screenshots, but keep desktop text sizes compact enough for a popover.
 
 ## 3. Volume Control
 
@@ -123,11 +119,14 @@ Default inputs:
 - USB
 - Bluetooth
 - Line
+- Tuner
 
 Rules:
 
-- Use segmented control if all inputs fit.
-- Use compact menu if the configured input list grows.
+- Use a modal/sheet-style input picker inspired by the reference input overlay when opened from the bottom rail.
+- Show inputs as a two-column icon grid with thin outline icons.
+- Highlight selected input with a blue outline/fill treatment.
+- Use segmented control only as a fallback for very small preview/test layouts.
 - Show pending state on selected target while switching.
 - Input labels are human-readable.
 - eISCP codes live in shared/service layer, not UI.
@@ -158,6 +157,7 @@ Fields:
 - Album
 - Playback status
 - Time, optional
+- Artwork, optional
 
 Fallbacks:
 
@@ -167,12 +167,24 @@ Fallbacks:
 | Artist missing | Hide artist line or show album only |
 | Album missing | Hide album |
 | Metadata unsupported | Keep section small and muted |
+| Artwork missing | Use a restrained placeholder, not a blank square |
 
 Rules:
 
-- Now Playing is secondary.
-- Do not reserve large artwork space in MVP.
-- Album art is out of scope for first UI pass.
+- Now Playing becomes the primary center of the popover when metadata is present.
+- Use an artwork-led layout inspired by the reference player screen, but cap artwork so volume/playback remain visible.
+- Album art fetching via `NJA` remains a separate protocol task. The UI pass can prepare the layout and use a placeholder until real artwork exists.
+- Long title/artist text must truncate or wrap cleanly without pushing controls off-screen.
+
+## 8.1 Network And Music Server Views
+
+The reference screenshots include a Network source grid and Music Server folder list.
+
+Current product decision:
+
+- Network input/source switching is in scope.
+- Full Music Server/NAS browsing remains out of scope until `NLS`/`NLA` behavior is captured from the real CR-N775.
+- The desktop UI may include a placeholder browser route only if it is clearly disabled or marked unavailable by state, not as a fake working browser.
 
 ## 9. Settings
 

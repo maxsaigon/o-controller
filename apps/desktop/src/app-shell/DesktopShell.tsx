@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { InputId, OControlState, PlaybackCommand, PresetDefinition } from '@o-control/shared';
-import { Settings, Wifi, WifiOff } from 'lucide-react';
 import { CommandBar } from '../components/CommandBar';
 import { InputSelector } from '../components/InputSelector';
 import { NowPlaying } from '../components/NowPlaying';
@@ -12,17 +11,18 @@ import { VolumeControl } from '../components/VolumeControl';
 import type { ShortcutStatus } from '../native/shortcuts';
 import { registerDesktopShortcuts, SHORTCUTS, toggleNativePopover, unregisterDesktopShortcuts } from '../native/shortcuts';
 import { useOControlApi } from '../ui/useOControlApi';
-
-const DEFAULT_SERVICE_URL = 'http://localhost:8787';
+import { useServiceManager } from '../ui/useServiceManager';
 
 export function DesktopShell() {
-  const [serviceUrl, setServiceUrl] = useState(() => {
-    return window.localStorage.getItem('o-control.serviceUrl') ?? DEFAULT_SERVICE_URL;
-  });
+  const serviceManager = useServiceManager();
+  const serviceUrl = serviceManager.status?.url || 'http://localhost:8787';
+
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [activePanel, setActivePanel] = useState<'input' | 'volume' | 'presets' | null>(null);
   const [shortcutStatus, setShortcutStatus] = useState<ShortcutStatus[]>(() => {
     return SHORTCUTS.map((shortcut) => ({ ...shortcut, registered: false, error: null }));
   });
+
   const api = useOControlApi(serviceUrl);
 
   const presets = useMemo<PresetDefinition[]>(() => {
@@ -35,11 +35,7 @@ export function DesktopShell() {
         ];
   }, [api.presets]);
 
-  function updateServiceUrl(nextUrl: string) {
-    const normalized = nextUrl.trim().replace(/\/$/, '');
-    setServiceUrl(normalized);
-    window.localStorage.setItem('o-control.serviceUrl', normalized);
-  }
+
 
   async function runPower() {
     await api.command('/commands/power', { action: 'toggle' }, 'power');
@@ -59,6 +55,7 @@ export function DesktopShell() {
 
   async function setInput(input: InputId) {
     await api.command('/commands/input', { input }, `input:${input}`);
+    setActivePanel(null);
   }
 
   async function runPreset(id: string) {
@@ -88,75 +85,83 @@ export function DesktopShell() {
 
   return (
     <main className="desktop-frame">
-      <section className="popover" aria-label="O-Control desktop companion">
+      <section className={`popover ${activePanel ? 'panel-active' : ''}`} aria-label="O-Control desktop companion">
         <StatusHeader
           state={state}
           serviceReachable={api.serviceReachable}
           connectionLabel={api.connectionLabel}
           pendingCommand={api.pendingCommand}
+          onContext={() => {
+            setSettingsOpen(true);
+            setActivePanel(null);
+          }}
+          onPower={runPower}
         />
 
         {settingsOpen ? (
           <ServiceSettings
-            serviceUrl={serviceUrl}
+            serviceManager={serviceManager}
             serviceReachable={api.serviceReachable}
-            error={api.error}
+            error={serviceManager.status?.error || api.error}
             shortcutStatus={shortcutStatus}
-            onChangeServiceUrl={updateServiceUrl}
             onBack={() => setSettingsOpen(false)}
             onTest={api.refresh}
           />
         ) : (
           <>
-            <CommandBar
-              state={state}
-              disabled={!api.serviceReachable}
-              receiverAvailable={receiverAvailable}
-              pendingCommand={api.pendingCommand}
-              onPower={runPower}
-              onMute={runMute}
-            />
+            <div className="player-view">
+              <NowPlaying playback={state.playback} nowPlaying={state.nowPlaying} />
 
-            <VolumeControl
-              volume={state.volume}
-              disabled={!receiverAvailable}
-              muted={state.muted}
-              pending={api.pendingCommand?.startsWith('volume') ?? false}
-              onStepDown={() => setVolume('down')}
-              onStepUp={() => setVolume('up')}
-              onCommit={setVolume}
-            />
+              <PlaybackControls
+                playback={state.playback}
+                disabled={!receiverAvailable}
+                pendingCommand={api.pendingCommand}
+                onAction={runPlayback}
+              />
 
-            <PlaybackControls
-              playback={state.playback}
-              disabled={!receiverAvailable}
-              pendingCommand={api.pendingCommand}
-              onAction={runPlayback}
-            />
+              {api.error ? <p className="inline-error">{api.error}</p> : null}
+            </div>
 
-            <InputSelector
-              value={state.input}
-              disabled={!receiverAvailable}
-              pendingCommand={api.pendingCommand}
-              onChange={setInput}
-            />
+            <div className="rail-dock">
+              {activePanel === 'input' ? (
+                <InputSelector
+                  value={state.input}
+                  disabled={!receiverAvailable}
+                  pendingCommand={api.pendingCommand}
+                  onChange={setInput}
+                />
+              ) : null}
 
-            <PresetStrip presets={presets} pendingCommand={api.pendingCommand} disabled={!receiverAvailable} onRun={runPreset} />
+              {activePanel === 'volume' ? (
+                <VolumeControl
+                  volume={state.volume}
+                  disabled={!receiverAvailable}
+                  muted={state.muted}
+                  pending={(api.pendingCommand?.startsWith('volume') ?? false) || api.pendingCommand === 'mute'}
+                  onStepDown={() => setVolume('down')}
+                  onStepUp={() => setVolume('up')}
+                  onCommit={setVolume}
+                  onMute={runMute}
+                />
+              ) : null}
 
-            <NowPlaying playback={state.playback} nowPlaying={state.nowPlaying} />
+              {activePanel === 'presets' ? (
+                <PresetStrip presets={presets} pendingCommand={api.pendingCommand} disabled={!receiverAvailable} onRun={runPreset} />
+              ) : null}
 
-            {api.error ? <p className="inline-error">{api.error}</p> : null}
-
-            <footer className="footer-actions">
-              <span className={`footer-connection ${api.serviceReachable ? 'online' : 'offline'}`}>
-                {api.serviceReachable ? <Wifi size={14} /> : <WifiOff size={14} />}
-                {api.connectionLabel}
-              </span>
-              <button className="ghost-button" type="button" onClick={() => setSettingsOpen(true)}>
-                <Settings size={16} />
-                Settings
-              </button>
-            </footer>
+              <CommandBar
+                state={state}
+                receiverAvailable={receiverAvailable}
+                activePanel={activePanel}
+                onOpenInput={() => setActivePanel(activePanel === 'input' ? null : 'input')}
+                onOpenVolume={() => setActivePanel(activePanel === 'volume' ? null : 'volume')}
+                onOpenSettings={() => {
+                  setSettingsOpen(true);
+                  setActivePanel(null);
+                }}
+                onOpenPresets={() => setActivePanel(activePanel === 'presets' ? null : 'presets')}
+              />
+            </div>
           </>
         )}
       </section>

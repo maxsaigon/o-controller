@@ -26,10 +26,6 @@ const config = loadConfig();
 const app = Fastify({
   logger: {
     level: config.LOG_LEVEL,
-    transport: {
-      target: 'pino/file',
-      options: { destination: 1 }, // stdout
-    },
   },
 });
 
@@ -70,6 +66,8 @@ async function queryInitialState(): Promise<void> {
     COMMANDS.TITLE_QUERY,
     COMMANDS.ARTIST_QUERY,
     COMMANDS.ALBUM_QUERY,
+    COMMANDS.TIME_QUERY,
+    COMMANDS.TRACK_QUERY,
   ];
   for (const cmd of queries) {
     try {
@@ -80,11 +78,43 @@ async function queryInitialState(): Promise<void> {
   }
 }
 
+// ── Metadata Polling ─────────────────────────────────────────
+let lastInput = store.getState().input;
+let lastPlayback = store.getState().playback;
+let timeQueryInterval: ReturnType<typeof setInterval> | null = null;
+
+store.subscribe((state) => {
+  if (state.connected && (state.input !== lastInput || state.playback !== lastPlayback)) {
+    if (state.input !== lastInput || (state.playback === 'playing' && lastPlayback !== 'playing')) {
+      void receiver.send(COMMANDS.TITLE_QUERY);
+      void receiver.send(COMMANDS.ARTIST_QUERY);
+      void receiver.send(COMMANDS.ALBUM_QUERY);
+      void receiver.send(COMMANDS.TIME_QUERY);
+      void receiver.send(COMMANDS.TRACK_QUERY);
+    }
+    lastInput = state.input;
+    lastPlayback = state.playback;
+  }
+
+  if (state.connected && state.playback === 'playing') {
+    if (!timeQueryInterval) {
+      timeQueryInterval = setInterval(() => {
+        void receiver.send(COMMANDS.TIME_QUERY);
+      }, 1500);
+    }
+  } else {
+    if (timeQueryInterval) {
+      clearInterval(timeQueryInterval);
+      timeQueryInterval = null;
+    }
+  }
+});
+
 // ── WebSocket plugin ─────────────────────────────────────────
-await app.register(cors, {
+app.register(cors, {
   origin: true,
 });
-await app.register(websocket);
+app.register(websocket);
 
 // ── Routes ───────────────────────────────────────────────────
 
@@ -95,6 +125,8 @@ app.get('/health', async () => {
     status: 'ok',
     connected: state.connected,
     mockMode: config.MOCK_MODE,
+    receiverHost: config.ONKYO_HOST,
+    receiverPort: config.ONKYO_PORT,
     uptime: process.uptime(),
   };
 });
@@ -207,6 +239,17 @@ app.post('/commands/playback', async (request, reply) => {
 
   const cmd = cmdMap[body.action];
   await receiver.send(cmd);
+
+  if (body.action === 'next' || body.action === 'previous' || body.action === 'play') {
+    setTimeout(() => {
+      void receiver.send(COMMANDS.TITLE_QUERY);
+      void receiver.send(COMMANDS.ARTIST_QUERY);
+      void receiver.send(COMMANDS.ALBUM_QUERY);
+      void receiver.send(COMMANDS.TIME_QUERY);
+      void receiver.send(COMMANDS.TRACK_QUERY);
+    }, 600);
+  }
+
   return { success: true, command: cmd };
 });
 
@@ -231,32 +274,34 @@ app.post<{ Params: { id: string } }>('/presets/:id/run', async (request, reply) 
 });
 
 // ── WebSocket Events ─────────────────────────────────────────
-app.get('/events', { websocket: true }, (socket, request) => {
-  app.log.info('WebSocket client connected');
+app.register(async (fastify) => {
+  fastify.get('/events', { websocket: true }, (socket, request) => {
+    fastify.log.info('WebSocket client connected');
 
-  // Send current state immediately
-  const event: OControlEvent = {
-    type: 'state.changed',
-    state: store.getState(),
-  };
-  socket.send(JSON.stringify(event));
-
-  // Subscribe to state changes
-  const unsubscribe = store.subscribe((state) => {
+    // Send current state immediately
     const event: OControlEvent = {
       type: 'state.changed',
-      state,
+      state: store.getState(),
     };
-    try {
-      socket.send(JSON.stringify(event));
-    } catch {
-      // Client disconnected
-    }
-  });
+    socket.send(JSON.stringify(event));
 
-  socket.on('close', () => {
-    app.log.info('WebSocket client disconnected');
-    unsubscribe();
+    // Subscribe to state changes
+    const unsubscribe = store.subscribe((state) => {
+      const event: OControlEvent = {
+        type: 'state.changed',
+        state,
+      };
+      try {
+        socket.send(JSON.stringify(event));
+      } catch {
+        // Client disconnected
+      }
+    });
+
+    socket.on('close', () => {
+      fastify.log.info('WebSocket client disconnected');
+      unsubscribe();
+    });
   });
 });
 

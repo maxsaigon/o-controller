@@ -7,6 +7,16 @@
     "global-shortcut:allow-is-registered",
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
-    "global-shortcut:allow-unregister-all"
+    "global-shortcut:allow-unregister-all",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [{ "args": true, "name": "binaries/o-control-service", "sidecar": true }]
+    },
+    "shell:allow-spawn",
+    "shell:allow-kill",
+    "store:allow-get",
+    "store:allow-set",
+    "store:allow-save",
+    "store:allow-load"
   ]
 }

@@ -26,11 +26,12 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src http://localhost:8787 http://127.0.0.1:8787 ws://localhost:8787 ws://127.0.0.1:8787"
+      "csp": "default-src 'self'; connect-src http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*"
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg"]
+    "targets": ["app", "dmg"],
+    "externalBin": ["binaries/o-control-service"]
   }
 }

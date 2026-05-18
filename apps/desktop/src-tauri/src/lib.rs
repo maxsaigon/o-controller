@@ -4,6 +4,8 @@ use tauri::{
     Manager,
 };
 
+mod service_manager;
+
 fn show_main(app: &tauri::AppHandle) -> Result<(), String> {
     let Some(window) = app.get_webview_window("main") else {
         return Ok(());
@@ -38,7 +40,18 @@ fn toggle_main_window(app: tauri::AppHandle) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![show_main_window, toggle_main_window])
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_store::Builder::new().build())
+        .manage(service_manager::ServiceManagerState::new())
+        .invoke_handler(tauri::generate_handler![
+            show_main_window,
+            toggle_main_window,
+            service_manager::get_service_status,
+            service_manager::get_service_config,
+            service_manager::update_service_config,
+            service_manager::discover_onkyo_devices,
+            service_manager::test_receiver_connection
+        ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -69,7 +82,11 @@ pub fn run() {
             "show" => {
                 let _ = show_main(app);
             }
-            "quit" => app.exit(0),
+            "quit" => {
+                let state = app.state::<service_manager::ServiceManagerState>();
+                service_manager::stop_local_service(&state);
+                app.exit(0);
+            }
             _ => {}
         })
         .on_window_event(|window, event| {
@@ -78,6 +95,22 @@ pub fn run() {
                 let _ = window.hide();
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running O-Control desktop shell");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri app")
+        .run(|app, event| {
+            if let tauri::RunEvent::Ready = event {
+                // Check and start local service if needed
+                let handle = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let state = handle.state::<service_manager::ServiceManagerState>();
+                    let config = service_manager::get_config(&handle);
+                    if config.service_mode == "local" {
+                        let _ = service_manager::start_local_service(handle.clone(), &state).await;
+                    }
+                });
+            } else if let tauri::RunEvent::ExitRequested { .. } = event {
+                let state = app.state::<service_manager::ServiceManagerState>();
+                service_manager::stop_local_service(&state);
+            }
+        });
 }

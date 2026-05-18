@@ -48,6 +48,14 @@
 - [x] Health check
 - [x] Restart policy
 
+### macOS Desktop UI
+- [x] React/Vite compact desktop controller
+- [x] Tauri native shell
+- [x] macOS tray/menu wiring
+- [x] Close-to-tray behavior
+- [x] Global shortcut registration path
+- [x] Local service URL settings
+
 ## Extended Features
 
 ### Now Playing (Phase 6)
@@ -64,11 +72,18 @@
 - [x] Run preset
 - [x] Show status
 
+### Native macOS Packaging (Completed)
+- [x] Package the desktop app as a self-contained macOS `.app`
+- [x] Bundle or otherwise provision the O-Control service for local app use
+- [x] Start, health-check, and stop the local service from the Tauri shell
+- [x] Preserve external service URL mode for N100/homelab deployments
+- [x] Build distributable `.dmg`
+- [x] Document local install, first run, and troubleshooting
+
 ## Out of Scope (Current)
 
-- ❌ macOS Tauri menu bar app (separate UI/UX track)
-- ❌ Web debug UI (separate UI/UX track)
 - ❌ Album art (NJA)
 - ❌ NAS/USB browser (experimental spike only)
 - ❌ Multi-zone control
 - ❌ UDP discovery (static IP preferred)
+- ❌ macOS Control Center WidgetKit controls

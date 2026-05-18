@@ -15,7 +15,9 @@
     "test:all": "npm test && npm run test:integration",
     "dev:service": "npm run dev -w @o-control/service",
     "dev:mock": "npm run dev -w @o-control/mock-receiver",
-    "lint": "npm run lint --workspaces --if-present"
+    "lint": "npm run lint --workspaces --if-present",
+    "build:sidecar": "npm run build:sidecar -w @o-control/service",
+    "build:app": "npm run build:sidecar && npm run tauri:build -w @o-control/desktop"
   },
   "engines": {
     "node": ">=20.0.0"

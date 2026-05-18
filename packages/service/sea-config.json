@@ -1,0 +1,6 @@
+{
+  "main": "dist/bundle.cjs",
+  "output": "dist/o-control-service",
+  "disableExperimentalSEAWarning": true,
+  "useCodeCache": true
+}

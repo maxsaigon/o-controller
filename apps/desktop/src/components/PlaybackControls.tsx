@@ -13,13 +13,13 @@ export function PlaybackControls({ playback, disabled, pendingCommand, onAction 
   const playPending = pendingCommand === `playback:${playPause}`;
 
   return (
-    <section className="control-band playback-band" aria-label="Playback">
+    <section className="playback-band" aria-label="Playback">
       <button className="round-button" type="button" title="Previous" disabled={disabled} onClick={() => onAction('previous')}>
         <SkipBack size={17} />
       </button>
-      <button className="primary-play" type="button" title={playPause === 'pause' ? 'Pause' : 'Play'} disabled={disabled || playPending} onClick={() => onAction(playPause)}>
+      <button className="primary-play" type="button" title={playPause === 'pause' ? 'Pause' : 'Play'} aria-label={playPause === 'pause' ? 'Pause' : 'Play'} disabled={disabled || playPending} onClick={() => onAction(playPause)}>
         {playPause === 'pause' ? <Pause size={20} /> : <Play size={20} />}
-        <span>{playPending ? '...' : playback === 'playing' ? 'Pause' : 'Play'}</span>
+        <span className="sr-only">{playPending ? 'Updating' : playback === 'playing' ? 'Pause' : 'Play'}</span>
       </button>
       <button className="round-button" type="button" title="Stop" disabled={disabled} onClick={() => onAction('stop')}>
         <Square size={15} />

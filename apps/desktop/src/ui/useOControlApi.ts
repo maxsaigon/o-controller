@@ -134,6 +134,8 @@ export function useOControlApi(serviceUrl: string) {
           body: JSON.stringify(body),
         });
         await refresh();
+        // Fallback refresh for delayed receiver response
+        setTimeout(() => refresh(), 1500);
       } catch (err) {
         setError(err instanceof Error ? err.message : `Command failed: ${label}`);
       } finally {

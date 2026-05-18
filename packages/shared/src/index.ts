@@ -46,9 +46,15 @@ export interface NowPlayingMeta {
   title: string;
   artist: string;
   album: string;
-  currentTime: string;   // e.g. "01:23"
-  totalTime: string;     // e.g. "04:56"
+  currentTime: string;
+  totalTime: string;
   trackNumber: string;
+  coverArtUrl?: string;
+  format?: string;
+  sampleRate?: string;
+  bitDepth?: string;
+  repeat?: 'off' | 'one' | 'all' | 'unknown';
+  shuffle?: 'off' | 'on' | 'unknown';
 }
 
 export interface OControlState {
