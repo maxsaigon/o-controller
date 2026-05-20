@@ -38,6 +38,18 @@ const receiver = new ReceiverClient({
   mockMode: config.MOCK_MODE,
 });
 
+// 1x1 red pixel JPEG base64
+export const MOCK_JPEG = Buffer.from(
+  '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=',
+  'base64'
+);
+
+export let cachedCoverArt: Buffer | null = null;
+
+export function setCachedCoverArt(buf: Buffer | null): void {
+  cachedCoverArt = buf;
+}
+
 const CORE_QUERIES = [
   COMMANDS.POWER_QUERY,
   COMMANDS.VOLUME_QUERY,
@@ -190,6 +202,14 @@ app.get('/presets', async () => {
 app.get('/cover-art', async (request, reply) => {
   const state = store.getState();
 
+  // 0. If in Mock Mode, return mock cover art if a song is playing
+  if (config.MOCK_MODE) {
+    if (state.nowPlaying.title) {
+      reply.type('image/jpeg').send(MOCK_JPEG);
+      return;
+    }
+  }
+
   // 1. If we have a base64 data URI in the state store, parse and return it
   if (state.nowPlaying.coverArtUrl?.startsWith('data:')) {
     const match = state.nowPlaying.coverArtUrl.match(/^data:([^;]+);base64,(.+)$/);
@@ -202,12 +222,18 @@ app.get('/cover-art', async (request, reply) => {
   }
 
   // 2. If the receiver provided a URL, use that URL directly.
-  if (state.nowPlaying.coverArtUrl?.startsWith('http')) {
+  if (state.nowPlaying.coverArtUrl?.startsWith('http') && !state.nowPlaying.coverArtUrl.includes('album_art.cgi')) {
     reply.redirect(state.nowPlaying.coverArtUrl);
     return;
   }
 
-  // 3. CR-N775 exposes the current cover at this endpoint when Music Server is active.
+  // 3. Return cached cover art if available
+  if (cachedCoverArt) {
+    reply.type('image/jpeg').send(cachedCoverArt);
+    return;
+  }
+
+  // 4. CR-N775 exposes the current cover at this endpoint when Music Server is active.
   if (state.connected && config.ONKYO_HOST) {
     try {
       const controller = new AbortController();
@@ -219,9 +245,10 @@ app.get('/cover-art', async (request, reply) => {
       clearTimeout(timeoutId);
 
       if (res.ok) {
-        const buffer = await res.arrayBuffer();
-        const contentType = res.headers.get('content-type') || 'image/jpeg';
-        reply.type(contentType).send(Buffer.from(buffer));
+        const rawBuffer = Buffer.from(await res.arrayBuffer());
+        const cleaned = stripOnkyoHeaders(rawBuffer);
+        cachedCoverArt = cleaned;
+        reply.type('image/jpeg').send(cleaned);
         return;
       }
     } catch (e) {

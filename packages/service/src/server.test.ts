@@ -308,15 +308,24 @@ describe('POST /presets/:id/run', () => {
 // GET /cover-art
 
 describe('GET /cover-art', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     store.resetNowPlaying();
+    const { setCachedCoverArt } = await import('./server.js');
+    setCachedCoverArt(null);
   });
 
-  it('should return 404 if no cover art is available', async () => {
+  it('should return mock JPEG in Mock Mode if a title is present', async () => {
+    const { MOCK_JPEG } = await import('./server.js');
+    store.reduce({ command: 'NTI', rawPayload: 'Mock Title' });
+    const res = await app.inject({ method: 'GET', url: '/cover-art' });
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.headers['content-type'], 'image/jpeg');
+    assert.deepEqual(res.rawPayload, MOCK_JPEG);
+  });
+
+  it('should return 404 in Mock Mode if no title is present', async () => {
     const res = await app.inject({ method: 'GET', url: '/cover-art' });
     assert.equal(res.statusCode, 404);
-    const body = JSON.parse(res.payload);
-    assert.equal(body.success, false);
   });
 
   it('should redirect to http URL if coverArtUrl is a web URL', async () => {
@@ -327,14 +336,12 @@ describe('GET /cover-art', () => {
   });
 
   it('should return decoded binary buffer if coverArtUrl is base64 data URI', async () => {
-    // Red pixel 1x1 png
     const pngBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
     store.setCoverArt(pngBase64);
 
     const res = await app.inject({ method: 'GET', url: '/cover-art' });
     assert.equal(res.statusCode, 200);
     assert.equal(res.headers['content-type'], 'image/png');
-    // Verify payload is correct binary
     const expectedBuffer = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
     assert.deepEqual(res.rawPayload, expectedBuffer);
   });
