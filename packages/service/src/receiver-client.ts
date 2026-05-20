@@ -318,7 +318,7 @@ export class ReceiverClient extends EventEmitter {
       return;
     }
 
-    if (command === 'NLARET') {
+    if (command === 'NLARET' || command === 'IEC17') {
       if (this.mockPath.length > 1) {
         this.mockPath.pop();
         this.mockCursor = 0;
@@ -369,27 +369,9 @@ export class ReceiverClient extends EventEmitter {
       const item = folder.items[idx];
       if (item) {
         this.mockCursor = idx;
-        if (item.type === 'folder') {
-          this.mockPath.push(item.name);
-          this.mockCursor = 0;
-          const nextFolder = MOCK_FOLDERS[item.name] || { title: item.name, items: [] };
-          setTimeout(() => {
-            this.emit('packet', { command: 'NLT', rawPayload: nextFolder.title });
-            nextFolder.items.forEach((subItem, idx) => {
-              const sep = subItem.type === 'folder' ? '/' : '-';
-              this.emit('packet', { command: 'NLS', rawPayload: `U${idx}${sep}${subItem.name}` });
-            });
-            this.emit('packet', { command: 'NLS', rawPayload: `C${this.mockCursor}` });
-          }, 10);
-        } else {
-          // Play file
-          setTimeout(() => {
-            this.emit('packet', { command: 'NTI', rawPayload: item.name.replace(/\.[^/.]+$/, "") });
-            this.emit('packet', { command: 'NAT', rawPayload: 'Mock Artist' });
-            this.emit('packet', { command: 'NAL', rawPayload: folder.title });
-            this.emit('packet', { command: 'NST', rawPayload: 'P--' });
-          }, 10);
-        }
+        setTimeout(() => {
+          this.emit('packet', { command: 'NLS', rawPayload: `C${this.mockCursor}` });
+        }, 10);
       }
       return;
     }

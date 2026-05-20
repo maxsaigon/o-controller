@@ -380,7 +380,7 @@ describe('POST /commands/list/action', () => {
     assert.equal(res.statusCode, 200);
     const body = JSON.parse(res.payload);
     assert.equal(body.success, true);
-    assert.equal(body.command, 'NLSI00004');
+    assert.equal(body.command, 'NLAENT');
   });
 });
 

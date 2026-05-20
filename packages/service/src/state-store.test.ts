@@ -265,12 +265,21 @@ describe('StateStore', () => {
     it('should parse NLS folder and file items correctly', () => {
       store.reduce({ command: 'NLS', rawPayload: 'U0/My Folder' });
       store.reduce({ command: 'NLS', rawPayload: 'U1-My Track.mp3' });
+      store.reduce({ command: 'NLS', rawPayload: 'U12-Ghost Song' });
       
       const state = store.getState();
       assert.deepEqual(state.netList.items, [
         { index: 0, name: 'My Folder', type: 'folder' },
-        { index: 1, name: 'My Track.mp3', type: 'file' }
+        { index: 1, name: 'My Track.mp3', type: 'file' },
+        { index: 12, name: 'Ghost Song', type: 'file' }
       ]);
+    });
+
+    it('should parse NLT with 22-character header prefix correctly', () => {
+      const customStore = new StateStore();
+      customStore.reduce({ command: 'NLT', rawPayload: '00020001000D0500040000Ghost Song' });
+      const state = customStore.getState();
+      assert.equal(state.netList.title, 'Ghost Song');
     });
 
     it('should parse NLS cursor lines correctly', () => {

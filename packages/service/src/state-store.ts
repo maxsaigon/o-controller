@@ -272,8 +272,13 @@ export class StateStore {
 
       // ── Net List Title ──
       case 'NLT': {
-        if (this.state.netList.title !== rawPayload) {
-          this.state.netList.title = rawPayload;
+        let titleText = rawPayload;
+        // Strip 22-character header prefix: xxuycccciiiillrraabbss if present
+        if (rawPayload.length >= 22 && /^[0-9A-Fa-f]{2}[0-9A-Za-z]{2}[0-9A-Fa-f]{18}/.test(rawPayload)) {
+          titleText = rawPayload.slice(22);
+        }
+        if (this.state.netList.title !== titleText) {
+          this.state.netList.title = titleText;
           this.state.netList.items = []; // Clear items on folder change
           this.state.netList.cursor = -1;
           changed = true;
@@ -285,10 +290,14 @@ export class StateStore {
       case 'NLS': {
         const type = rawPayload[0];
         if (type === 'U' || type === 'A') {
-          const lineNum = parseInt(rawPayload[1], 10);
-          if (!isNaN(lineNum)) {
-            const separator = rawPayload[2];
-            const name = rawPayload.slice(3);
+          // Format: U<index><separator><name>
+          // E.g., "U0/Tag View" -> type='U', index='0', separator='/', name='Tag View'
+          // E.g., "U10-Song Name" -> type='U', index='10', separator='-', name='Song Name'
+          const match = rawPayload.match(/^([UA])(\d+)([\/\-])(.*)$/);
+          if (match) {
+            const lineNum = parseInt(match[2], 10);
+            const separator = match[3];
+            const name = match[4];
             let itemType: 'folder' | 'file' | 'unknown' = 'unknown';
             if (separator === '/') {
               itemType = 'folder';

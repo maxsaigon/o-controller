@@ -500,12 +500,19 @@ app.post('/commands/list/action', async (request, reply) => {
       cmd = 'NLAENT';
       break;
     case 'back':
-      cmd = 'NLARET';
+      // Send standard list return first
+      await receiver.send('NLARET');
+      // Also send general remote control Return key to ensure compatibility on all models (like CR-N775)
+      cmd = 'IEC17';
       break;
     case 'select': {
       const selectIndex = body.index !== undefined ? body.index + 1 : 1;
       const indexStr = String(selectIndex).padStart(5, '0');
       cmd = `NLSI${indexStr}`;
+      await receiver.send(cmd);
+      // Wait 50ms before sending enter/play command to ensure receiver registers selection
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      cmd = 'NLAENT';
       break;
     }
   }
