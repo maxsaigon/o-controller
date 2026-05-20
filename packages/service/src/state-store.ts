@@ -273,14 +273,23 @@ export class StateStore {
       // ── Net List Title ──
       case 'NLT': {
         let titleText = rawPayload;
+        let totalItems = 0;
         // Strip 22-character header prefix: xxuycccciiiillrraabbss if present
         if (rawPayload.length >= 22 && /^[0-9A-Fa-f]{2}[0-9A-Za-z]{2}[0-9A-Fa-f]{18}/.test(rawPayload)) {
+          const totalHex = rawPayload.slice(8, 12);
+          try {
+            totalItems = parseInt(totalHex, 16);
+          } catch (e) {}
           titleText = rawPayload.slice(22);
         }
-        if (this.state.netList.title !== titleText) {
+        if (
+          this.state.netList.title !== titleText ||
+          this.state.netList.totalItems !== totalItems
+        ) {
           this.state.netList.title = titleText;
           this.state.netList.items = []; // Clear items on folder change
           this.state.netList.cursor = -1;
+          this.state.netList.totalItems = totalItems;
           changed = true;
         }
         break;

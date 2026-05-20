@@ -74,12 +74,107 @@ let lastInput = store.getState().input;
 let hasQueriedCore = false;
 let hasScheduledInitialMetadataRefresh = false;
 
+let isScanning = false;
+let originalCursor = -1;
+let lastScannedFolder = '';
+let scanTimeoutTimer: ReturnType<typeof setTimeout> | undefined;
+const attemptedIndices = new Set<number>();
+
+function abortScan() {
+  isScanning = false;
+  attemptedIndices.clear();
+  if (scanTimeoutTimer) {
+    clearTimeout(scanTimeoutTimer);
+    scanTimeoutTimer = undefined;
+  }
+}
+
+async function startScanIfRequired() {
+  const state = store.getState();
+  const netList = state.netList;
+
+  // Only scan if on Network or USB input
+  if (state.input !== 'net' && state.input !== 'usb') {
+    abortScan();
+    return;
+  }
+
+  // If folder title changed, reset scan context
+  if (netList.title !== lastScannedFolder) {
+    abortScan();
+    lastScannedFolder = netList.title;
+    originalCursor = netList.cursor;
+  }
+
+  if (netList.totalItems > 0 && netList.items.length < netList.totalItems) {
+    if (isScanning) return;
+
+    // Save original cursor position if not already saved
+    if (originalCursor === -1 && netList.cursor !== -1) {
+      originalCursor = netList.cursor;
+    }
+
+    isScanning = true;
+    app.log.info({ title: netList.title, total: netList.totalItems }, 'Starting background list pre-fetch');
+    void continueScan();
+  }
+}
+
+async function continueScan() {
+  if (!isScanning) return;
+
+  const state = store.getState();
+  const netList = state.netList;
+
+  // Find first missing item index that hasn't been attempted yet
+  let firstMissingIdx = -1;
+  for (let i = 0; i < netList.totalItems; i++) {
+    if (!netList.items.some(item => item.index === i) && !attemptedIndices.has(i)) {
+      firstMissingIdx = i;
+      break;
+    }
+  }
+
+  if (firstMissingIdx !== -1) {
+    attemptedIndices.add(firstMissingIdx);
+    try {
+      const targetIndexStr = String(firstMissingIdx + 1).padStart(5, '0');
+      app.log.info({ index: firstMissingIdx, cmd: `NLSI${targetIndexStr}` }, 'Background scanning page');
+      await receiver.send(`NLSI${targetIndexStr}`);
+    } catch (err) {
+      app.log.error(err, 'Failed to send scan select command');
+    }
+
+    // Schedule next scan step after 250ms to allow receiver to respond and update state
+    scanTimeoutTimer = setTimeout(() => {
+      void continueScan();
+    }, 250);
+  } else {
+    // Scan complete! Restore original cursor if needed
+    if (originalCursor !== -1 && netList.cursor !== originalCursor) {
+      try {
+        const restoreIndexStr = String(originalCursor + 1).padStart(5, '0');
+        app.log.info({ restoreIndex: originalCursor }, 'Restoring original selection cursor');
+        await receiver.send(`NLSI${restoreIndexStr}`);
+      } catch (err) {
+        app.log.error(err, 'Failed to restore selection cursor');
+      }
+    }
+    app.log.info({ title: netList.title }, 'Background list pre-fetch complete');
+    isScanning = false;
+  }
+}
+
 // Wire receiver events to state store
 receiver.on('packet', (packet: ParsedPacket) => {
   const known = store.reduce(packet);
   if (!known) {
     app.log.info({ cmd: packet.command, payload: packet.rawPayload }, 'Unknown eISCP event');
   }
+});
+
+store.subscribe(() => {
+  void startScanIfRequired();
 });
 
 receiver.on('connected', () => {
@@ -486,6 +581,10 @@ const listQuerySchema = z.object({
 });
 
 app.post('/commands/list/action', async (request, reply) => {
+  // User manual action! Abort background scan and prevent automatic restart for this folder
+  abortScan();
+  lastScannedFolder = '';
+
   const body = listActionSchema.parse(request.body);
   let cmd: string;
 

@@ -67,6 +67,7 @@ export interface NetListState {
   title: string;
   items: NetListItem[];
   cursor: number;
+  totalItems: number;
 }
 
 export interface OControlState {
@@ -93,6 +94,7 @@ export const DEFAULT_NET_LIST: NetListState = {
   title: '',
   items: [],
   cursor: -1,
+  totalItems: 0,
 };
 
 export const DEFAULT_STATE: OControlState = {

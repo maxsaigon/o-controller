@@ -121,7 +121,13 @@ export const NetList: React.FC<NetListProps> = ({ state, pendingCommand, command
         </button>
         <div className="netlist-title-group">
           <h2>{title || 'Net/USB Browser'}</h2>
-          <span>{items.length} items found</span>
+          {state.netList.totalItems > 0 && items.length < state.netList.totalItems ? (
+            <span className="netlist-loading-progress" style={{ color: '#45aaff' }}>
+              Loading ({items.length}/{state.netList.totalItems})...
+            </span>
+          ) : (
+            <span>{items.length} items found</span>
+          )}
         </div>
         <div className="netlist-header-right">
           <div className="netlist-nav-controls">

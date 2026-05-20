@@ -253,6 +253,7 @@ describe('StateStore', () => {
           title: 'Old Title',
           items: [{ index: 0, name: 'Stale Item', type: 'file' }],
           cursor: 2,
+          totalItems: 0,
         }
       });
       customStore.reduce({ command: 'NLT', rawPayload: 'New Title' });
@@ -280,6 +281,7 @@ describe('StateStore', () => {
       customStore.reduce({ command: 'NLT', rawPayload: '00020001000D0500040000Ghost Song' });
       const state = customStore.getState();
       assert.equal(state.netList.title, 'Ghost Song');
+      assert.equal(state.netList.totalItems, 13);
     });
 
     it('should parse NLS cursor lines correctly', () => {
