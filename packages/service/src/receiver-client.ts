@@ -34,21 +34,21 @@ export class ReceiverClient extends EventEmitter {
   private buffer: Buffer = Buffer.alloc(0);
   private queue: QueuedCommand[] = [];
   private sending = false;
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private reconnectAttempt = 0;
+  private connecting: Promise<void> | null = null;
   private destroyed = false;
   private readonly host: string;
   private readonly port: number;
   private readonly logger: Logger;
   private readonly commandInterval: number;
   private readonly mockMode: boolean;
+  private lastCommandAt = 0;
 
   constructor(options: ReceiverClientOptions) {
     super();
     this.host = options.host;
     this.port = options.port;
     this.logger = options.logger;
-    this.commandInterval = options.commandInterval ?? 50;
+    this.commandInterval = options.commandInterval ?? 150;
     this.mockMode = options.mockMode ?? false;
   }
 
@@ -60,30 +60,10 @@ export class ReceiverClient extends EventEmitter {
       return;
     }
 
-    this.logger.info({ host: this.host, port: this.port }, 'Connecting to receiver');
-    this.socket = new net.Socket();
-
-    this.socket.on('connect', () => {
-      this.reconnectAttempt = 0;
-      this.logger.info('Connected to receiver');
-      this.emit('connected');
-    });
-
-    this.socket.on('data', (data: Buffer) => {
-      this.handleData(data);
-    });
-
-    this.socket.on('close', () => {
-      this.logger.warn('Receiver connection closed');
+    void this.ensureConnected().catch((err) => {
+      this.logger.error({ err: err.message }, 'Receiver connection failed');
       this.emit('disconnected');
-      this.scheduleReconnect();
     });
-
-    this.socket.on('error', (err: Error) => {
-      this.logger.error({ err: err.message }, 'Receiver connection error');
-    });
-
-    this.socket.connect(this.port, this.host);
   }
 
   /** Send a raw ISCP command to the receiver */
@@ -105,9 +85,6 @@ export class ReceiverClient extends EventEmitter {
   /** Disconnect and clean up */
   destroy(): void {
     this.destroyed = true;
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-    }
     if (this.socket) {
       this.socket.destroy();
       this.socket = null;
@@ -135,43 +112,103 @@ export class ReceiverClient extends EventEmitter {
       const item = this.queue.shift()!;
 
       if (!this.socket || this.socket.destroyed) {
-        item.reject(new Error('Not connected to receiver'));
-        continue;
+        try {
+          await this.ensureConnected();
+        } catch (err) {
+          this.emit('disconnected');
+          item.reject(err instanceof Error ? err : new Error(String(err)));
+          continue;
+        }
       }
 
       try {
+        const elapsed = Date.now() - this.lastCommandAt;
+        if (elapsed < this.commandInterval) {
+          await this.delay(this.commandInterval - elapsed);
+        }
+
         const packet = buildPacket(item.command);
-        this.socket.write(packet);
+        const socket = this.socket;
+        if (!socket || socket.destroyed) {
+          throw new Error('Not connected to receiver');
+        }
+        socket.write(packet);
+        this.lastCommandAt = Date.now();
         this.logger.debug({ command: item.command }, 'Sent command');
         item.resolve();
       } catch (err) {
         item.reject(err instanceof Error ? err : new Error(String(err)));
-      }
-
-      // Enforce minimum interval between commands
-      if (this.queue.length > 0) {
-        await this.delay(this.commandInterval);
       }
     }
 
     this.sending = false;
   }
 
-  private scheduleReconnect(): void {
-    if (this.destroyed) return;
+  private ensureConnected(): Promise<void> {
+    if (this.socket && !this.socket.destroyed) {
+      return Promise.resolve();
+    }
+    if (this.connecting) {
+      return this.connecting;
+    }
+    if (this.destroyed) {
+      return Promise.reject(new Error('Receiver client is destroyed'));
+    }
 
-    // Exponential backoff: 1s, 2s, 4s, 8s, 16s, max 30s
-    const backoff = Math.min(30_000, 1000 * Math.pow(2, this.reconnectAttempt));
-    this.reconnectAttempt++;
+    this.logger.info({ host: this.host, port: this.port }, 'Connecting to receiver');
+    this.socket = new net.Socket();
+    this.buffer = Buffer.alloc(0);
 
-    this.logger.info({ backoffMs: backoff, attempt: this.reconnectAttempt }, 'Scheduling reconnect');
+    this.connecting = new Promise((resolve, reject) => {
+      let settled = false;
+      const timeout = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          this.connecting = null;
+          this.socket?.destroy();
+          reject(new Error('Receiver connection timed out'));
+        }
+      }, 4000);
 
-    this.reconnectTimer = setTimeout(() => {
-      this.socket?.destroy();
-      this.socket = null;
-      this.buffer = Buffer.alloc(0);
-      this.connect();
-    }, backoff);
+      this.socket?.once('connect', () => {
+        settled = true;
+        clearTimeout(timeout);
+        this.connecting = null;
+        this.logger.info('Connected to receiver');
+        this.emit('connected');
+        resolve();
+      });
+
+      this.socket?.on('data', (data: Buffer) => {
+        this.handleData(data);
+      });
+
+      this.socket?.once('close', () => {
+        this.logger.debug('Receiver TCP session closed');
+        this.socket = null;
+        this.buffer = Buffer.alloc(0);
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeout);
+          this.connecting = null;
+          reject(new Error('Receiver connection closed before connect'));
+        }
+      });
+
+      this.socket?.once('error', (err: Error) => {
+        this.logger.error({ err: err.message }, 'Receiver connection error');
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeout);
+          this.connecting = null;
+          reject(err);
+        }
+      });
+
+      this.socket?.connect(this.port, this.host);
+    });
+
+    return this.connecting;
   }
 
   private delay(ms: number): Promise<void> {
@@ -199,6 +236,7 @@ export class ReceiverClient extends EventEmitter {
       [COMMANDS.PLAYBACK_STATUS_QUERY]: { command: 'NST', rawPayload: 'P--' },
       [COMMANDS.TIME_QUERY]: { command: 'NTM', rawPayload: '01:23/04:56' },
       [COMMANDS.TRACK_QUERY]: { command: 'NTR', rawPayload: '0002/0015' },
+      [COMMANDS.FORMAT_QUERY]: { command: 'NFI', rawPayload: 'FLAC/96kHz/24bit' },
     };
 
     // Handle volume set commands (MVLxx)

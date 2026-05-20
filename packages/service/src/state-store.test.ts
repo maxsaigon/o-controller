@@ -160,10 +160,47 @@ describe('StateStore', () => {
     });
   });
 
-  describe('reduce — track number', () => {
+  describe('reduce - track number', () => {
     it('should set track number', () => {
-      store.reduce({ command: 'NTR', rawPayload: '0003/0012' });
-      assert.equal(store.getState().nowPlaying.trackNumber, '0003/0012');
+      store.reduce({ command: 'NTR', rawPayload: '001/010' });
+      assert.equal(store.getState().nowPlaying.trackNumber, '001/010');
+    });
+  });
+
+  describe('reduce - file info (NFI)', () => {
+    it('should parse codec, sample rate, and bit depth', () => {
+      store.reduce({ command: 'NFI', rawPayload: 'FLAC/96kHz/24bit' });
+      const np = store.getState().nowPlaying;
+      assert.equal(np.format, 'FLAC');
+      assert.equal(np.sampleRate, '96kHz');
+      assert.equal(np.bitDepth, '24bit');
+    });
+  });
+
+  describe('reduce - jacket art (NJA)', () => {
+    it('should clear coverArtUrl when no image', () => {
+      store.reduce({ command: 'NJA', rawPayload: 'n-' });
+      assert.equal(store.getState().nowPlaying.coverArtUrl, undefined);
+    });
+
+    it('should handle URL format', () => {
+      store.reduce({ command: 'NJA', rawPayload: '2-http://example.com/cover.jpg' });
+      assert.equal(store.getState().nowPlaying.coverArtUrl, 'http://example.com/cover.jpg');
+    });
+
+    it('should buffer and decode hex JPEG data', () => {
+      // "0" = start, "1" = next, "2" = end
+      // 10 = JPEG, Start. 11 = JPEG, Next. 12 = JPEG, End.
+      // Payload: "FFD8" (hex) = "10FFD8"
+      store.reduce({ command: 'NJA', rawPayload: '10FFD8' });
+      assert.equal(store.getState().nowPlaying.coverArtUrl, undefined); // not ended yet
+
+      store.reduce({ command: 'NJA', rawPayload: '11FFE0' });
+
+      store.reduce({ command: 'NJA', rawPayload: '120010' });
+      // total hex: FFD8FFE00010
+      const base64 = Buffer.from('FFD8FFE00010', 'hex').toString('base64');
+      assert.equal(store.getState().nowPlaying.coverArtUrl, `data:image/jpeg;base64,${base64}`);
     });
   });
 

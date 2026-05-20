@@ -1,22 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DEFAULT_STATE } from '@o-control/shared';
 import type { OControlEvent, OControlState, PresetDefinition } from '@o-control/shared';
 
-const EMPTY_STATE: OControlState = {
-  connected: false,
-  power: 'unknown',
-  input: 'unknown',
-  volume: 0,
-  muted: false,
-  playback: 'unknown',
-  nowPlaying: {
-    title: '',
-    artist: '',
-    album: '',
-    currentTime: '',
-    totalTime: '',
-    trackNumber: '',
-  },
-};
+const EMPTY_STATE: OControlState = DEFAULT_STATE;
 
 function eventUrl(serviceUrl: string) {
   const url = new URL(serviceUrl);

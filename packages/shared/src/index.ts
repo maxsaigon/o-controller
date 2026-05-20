@@ -57,6 +57,18 @@ export interface NowPlayingMeta {
   shuffle?: 'off' | 'on' | 'unknown';
 }
 
+export interface NetListItem {
+  index: number;
+  name: string;
+  type: 'folder' | 'file' | 'unknown';
+}
+
+export interface NetListState {
+  title: string;
+  items: NetListItem[];
+  cursor: number;
+}
+
 export interface OControlState {
   connected: boolean;
   power: 'on' | 'off' | 'unknown';
@@ -65,6 +77,7 @@ export interface OControlState {
   muted: boolean;
   playback: PlaybackStatus;
   nowPlaying: NowPlayingMeta;
+  netList: NetListState;
 }
 
 export const DEFAULT_NOW_PLAYING: NowPlayingMeta = {
@@ -76,6 +89,12 @@ export const DEFAULT_NOW_PLAYING: NowPlayingMeta = {
   trackNumber: '',
 };
 
+export const DEFAULT_NET_LIST: NetListState = {
+  title: '',
+  items: [],
+  cursor: -1,
+};
+
 export const DEFAULT_STATE: OControlState = {
   connected: false,
   power: 'unknown',
@@ -84,6 +103,7 @@ export const DEFAULT_STATE: OControlState = {
   muted: false,
   playback: 'unknown',
   nowPlaying: { ...DEFAULT_NOW_PLAYING },
+  netList: { ...DEFAULT_NET_LIST },
 };
 
 // ─── Events ──────────────────────────────────────────────────

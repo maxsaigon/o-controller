@@ -22,6 +22,10 @@ export class StateStore {
   private state: OControlState;
   private listeners: Set<StateListener> = new Set();
 
+  // Buffers for NJA (Album Art) packets
+  private jacketArtBuffer: string = '';
+  private jacketArtType: string = '';
+
   constructor(initial?: Partial<OControlState>) {
     this.state = {
       ...DEFAULT_STATE,
@@ -187,6 +191,84 @@ export class StateStore {
         break;
       }
 
+      // ── File Info ──
+      case 'NFI': {
+        // CR-N775 returns values like: "FLAC/96kHz/24bit"
+        const [format = '', sampleRate = '', bitDepth = ''] = rawPayload
+          .split('/')
+          .map((part) => part.trim());
+
+        if (
+          this.state.nowPlaying.format !== format ||
+          this.state.nowPlaying.sampleRate !== sampleRate ||
+          this.state.nowPlaying.bitDepth !== bitDepth
+        ) {
+          this.state.nowPlaying.format = format || undefined;
+          this.state.nowPlaying.sampleRate = sampleRate || undefined;
+          this.state.nowPlaying.bitDepth = bitDepth || undefined;
+          changed = true;
+        }
+        break;
+      }
+
+      // ── Jacket Art (Cover Photo) ──
+      case 'NJA': {
+        // Format: tpxxxxxx...
+        // t: 0=BMP, 1=JPEG, 2=URL, n=No image
+        // p: 0=Start, 1=Next, 2=End, -=Not used
+        const type = rawPayload[0];
+        const flag = rawPayload[1];
+        const data = rawPayload.slice(2);
+
+        if (type === 'n') {
+           if (this.state.nowPlaying.coverArtUrl) {
+             this.state.nowPlaying.coverArtUrl = undefined;
+             changed = true;
+           }
+           this.jacketArtBuffer = '';
+           break;
+        }
+
+        if (type === '2') {
+           // URL
+           let url = data;
+           if (!url.startsWith('http')) {
+               try {
+                  url = Buffer.from(data, 'hex').toString('utf8');
+               } catch (e) {}
+           }
+           if (this.state.nowPlaying.coverArtUrl !== url) {
+             this.state.nowPlaying.coverArtUrl = url;
+             changed = true;
+           }
+           this.jacketArtBuffer = '';
+           break;
+        }
+
+        // Binary Image Data (0=BMP, 1=JPEG)
+        if (flag === '0') {
+           this.jacketArtBuffer = data;
+           this.jacketArtType = type;
+        } else if (flag === '1') {
+           this.jacketArtBuffer += data;
+        } else if (flag === '2') {
+           this.jacketArtBuffer += data;
+           try {
+             const mime = this.jacketArtType === '0' ? 'image/bmp' : 'image/jpeg';
+             const base64 = Buffer.from(this.jacketArtBuffer, 'hex').toString('base64');
+             const dataUrl = `data:${mime};base64,${base64}`;
+             if (this.state.nowPlaying.coverArtUrl !== dataUrl) {
+               this.state.nowPlaying.coverArtUrl = dataUrl;
+               changed = true;
+             }
+           } catch (err) {
+             // Failed to decode hex
+           }
+           this.jacketArtBuffer = '';
+        }
+        break;
+      }
+
       default:
         known = false;
     }
@@ -201,5 +283,13 @@ export class StateStore {
   resetNowPlaying(): void {
     this.state.nowPlaying = { ...DEFAULT_NOW_PLAYING };
     this.notify();
+  }
+
+  /** Set cover art explicitly (e.g. from album_art.cgi fallback) */
+  setCoverArt(url: string | undefined): void {
+    if (this.state.nowPlaying.coverArtUrl !== url) {
+      this.state.nowPlaying.coverArtUrl = url;
+      this.notify();
+    }
   }
 }

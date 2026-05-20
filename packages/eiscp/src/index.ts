@@ -55,6 +55,8 @@ export const COMMANDS = {
   PLAYBACK_STATUS_QUERY: 'NSTQSTN',
   TIME_QUERY: 'NTMQSTN',
   TRACK_QUERY: 'NTRQSTN',
+  FORMAT_QUERY: 'NFIQSTN',
+  ALBUM_ART_QUERY: 'NJAQSTN',
 } as const;
 
 // ─── Packet Builder ─────────────────────────────────────────
