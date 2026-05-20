@@ -356,6 +356,58 @@ describe('Unknown routes', () => {
   });
 });
 
+describe('POST /commands/list/action', () => {
+  it('should accept list navigation actions', async () => {
+    const actions = ['up', 'down', 'enter', 'back'];
+    for (const action of actions) {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/commands/list/action',
+        payload: { action },
+      });
+      assert.equal(res.statusCode, 200);
+      const body = JSON.parse(res.payload);
+      assert.equal(body.success, true);
+    }
+  });
+
+  it('should accept select action with index', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/commands/list/action',
+      payload: { action: 'select', index: 3 },
+    });
+    assert.equal(res.statusCode, 200);
+    const body = JSON.parse(res.payload);
+    assert.equal(body.success, true);
+    assert.equal(body.command, 'NLSI00004');
+  });
+});
+
+describe('POST /commands/list/query', () => {
+  it('should reject when input is not net or usb', async () => {
+    store.reduce({ command: 'SLI', rawPayload: '23' }); // CD input
+    const res = await app.inject({
+      method: 'POST',
+      url: '/commands/list/query',
+    });
+    assert.equal(res.statusCode, 400);
+  });
+
+  it('should accept when input is net', async () => {
+    store.reduce({ command: 'SLI', rawPayload: '2B' }); // NET input
+    const res = await app.inject({
+      method: 'POST',
+      url: '/commands/list/query',
+      payload: { type: 'both' },
+    });
+    assert.equal(res.statusCode, 200);
+    const body = JSON.parse(res.payload);
+    assert.equal(body.success, true);
+    assert.deepEqual(body.queries, ['NLTQSTN', 'NLSQSTN']);
+  });
+});
+
 describe('stripOnkyoHeaders', () => {
   it('should strip headers by identifying JPEG magic bytes (FF D8)', async () => {
     const { stripOnkyoHeaders } = await import('./server.js');

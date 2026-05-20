@@ -475,6 +475,69 @@ app.post<{ Params: { id: string } }>('/presets/:id/run', async (request, reply) 
   return { success: true, presetId: preset.id, message: `Ran preset "${preset.name}"` };
 });
 
+// Network List Navigation
+const listActionSchema = z.object({
+  action: z.enum(['up', 'down', 'enter', 'back', 'select'] as const),
+  index: z.number().int().min(0).optional(),
+});
+
+const listQuerySchema = z.object({
+  type: z.enum(['title', 'items', 'both'] as const).default('both'),
+});
+
+app.post('/commands/list/action', async (request, reply) => {
+  const body = listActionSchema.parse(request.body);
+  let cmd: string;
+
+  switch (body.action) {
+    case 'up':
+      cmd = 'NLAUP';
+      break;
+    case 'down':
+      cmd = 'NLADN';
+      break;
+    case 'enter':
+      cmd = 'NLAENT';
+      break;
+    case 'back':
+      cmd = 'NLARET';
+      break;
+    case 'select': {
+      const selectIndex = body.index !== undefined ? body.index + 1 : 1;
+      const indexStr = String(selectIndex).padStart(5, '0');
+      cmd = `NLSI${indexStr}`;
+      break;
+    }
+  }
+
+  await receiver.send(cmd);
+  return { success: true, command: cmd };
+});
+
+app.post('/commands/list/query', async (request, reply) => {
+  const body = listQuerySchema.parse(request.body ?? {});
+  const state = store.getState();
+
+  if (state.input !== 'net' && state.input !== 'usb') {
+    reply.code(400);
+    return { success: false, message: 'Network list browsing only supported on Net or USB inputs' };
+  }
+
+  const queries: string[] = [];
+  if (body.type === 'title' || body.type === 'both') {
+    queries.push('NLTQSTN');
+  }
+  if (body.type === 'items' || body.type === 'both') {
+    queries.push('NLSQSTN');
+  }
+
+  for (const q of queries) {
+    await receiver.send(q);
+  }
+
+  return { success: true, queries };
+});
+
 // ── WebSocket Events ─────────────────────────────────────────
 app.register(async (fastify) => {
   fastify.get('/events', { websocket: true }, (socket, request) => {
