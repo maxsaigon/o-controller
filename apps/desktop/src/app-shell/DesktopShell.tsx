@@ -103,14 +103,13 @@ export function DesktopShell() {
             serviceManager={serviceManager}
             serviceReachable={api.serviceReachable}
             error={serviceManager.status?.error || api.error}
-            shortcutStatus={shortcutStatus}
             onBack={() => setSettingsOpen(false)}
             onTest={api.refresh}
           />
         ) : (
           <>
             <div className="player-view">
-              <NowPlaying playback={state.playback} nowPlaying={state.nowPlaying} />
+              <NowPlaying playback={state.playback} nowPlaying={state.nowPlaying} serviceUrl={serviceUrl} />
 
               <PlaybackControls
                 playback={state.playback}
