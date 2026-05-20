@@ -29,6 +29,62 @@ interface QueuedCommand {
  *  - 'connected': () — connected to receiver
  *  - 'disconnected': () — lost connection
  */
+interface MockFolder {
+  title: string;
+  items: { name: string; type: 'folder' | 'file' }[];
+}
+
+const MOCK_FOLDERS: Record<string, MockFolder> = {
+  'root': {
+    title: 'Music Server',
+    items: [
+      { name: 'My Favorite', type: 'folder' },
+      { name: 'TuneIn Radio', type: 'folder' },
+      { name: 'Music Server (NAS)', type: 'folder' },
+      { name: 'USB Storage', type: 'folder' },
+    ],
+  },
+  'Music Server (NAS)': {
+    title: 'Music Server (NAS)',
+    items: [
+      { name: 'Artists', type: 'folder' },
+      { name: 'Albums', type: 'folder' },
+      { name: 'Folders', type: 'folder' },
+    ],
+  },
+  'Folders': {
+    title: 'Folders',
+    items: [
+      { name: 'Pop Music', type: 'folder' },
+      { name: 'Rock Classics', type: 'folder' },
+      { name: 'Jazz & Blues', type: 'folder' },
+    ],
+  },
+  'Pop Music': {
+    title: 'Pop Music',
+    items: [
+      { name: 'Khúc Giao Mùa.flac', type: 'file' },
+      { name: 'Chờ Đông.flac', type: 'file' },
+      { name: 'Tình Đơn Phương.mp3', type: 'file' },
+    ],
+  },
+  'Rock Classics': {
+    title: 'Rock Classics',
+    items: [
+      { name: 'Bohemian Rhapsody.flac', type: 'file' },
+      { name: 'Hotel California.mp3', type: 'file' },
+      { name: 'Stairway to Heaven.wav', type: 'file' },
+    ],
+  },
+  'Jazz & Blues': {
+    title: 'Jazz & Blues',
+    items: [
+      { name: 'Take Five.mp3', type: 'file' },
+      { name: 'Blue in Green.flac', type: 'file' },
+    ],
+  },
+};
+
 export class ReceiverClient extends EventEmitter {
   private socket: net.Socket | null = null;
   private buffer: Buffer = Buffer.alloc(0);
@@ -42,6 +98,8 @@ export class ReceiverClient extends EventEmitter {
   private readonly commandInterval: number;
   private readonly mockMode: boolean;
   private lastCommandAt = 0;
+  private mockPath: string[] = ['root'];
+  private mockCursor = 0;
 
   constructor(options: ReceiverClientOptions) {
     super();
@@ -219,6 +277,123 @@ export class ReceiverClient extends EventEmitter {
    * In mock mode, simulate receiver responses for common queries.
    */
   private simulateMockResponse(command: string): void {
+    const currentFolderKey = this.mockPath[this.mockPath.length - 1] || 'root';
+    const folder = MOCK_FOLDERS[currentFolderKey] || MOCK_FOLDERS['root'];
+
+    if (command === 'NLTQSTN') {
+      setTimeout(() => {
+        this.emit('packet', { command: 'NLT', rawPayload: folder.title });
+      }, 5);
+      return;
+    }
+
+    if (command === 'NLSQSTN') {
+      setTimeout(() => {
+        folder.items.forEach((item, idx) => {
+          const sep = item.type === 'folder' ? '/' : '-';
+          this.emit('packet', { command: 'NLS', rawPayload: `U${idx}${sep}${item.name}` });
+        });
+        this.emit('packet', { command: 'NLS', rawPayload: `C${this.mockCursor}` });
+      }, 10);
+      return;
+    }
+
+    if (command === 'NLAUP') {
+      if (this.mockCursor > 0) {
+        this.mockCursor--;
+        setTimeout(() => {
+          this.emit('packet', { command: 'NLS', rawPayload: `C${this.mockCursor}` });
+        }, 5);
+      }
+      return;
+    }
+
+    if (command === 'NLADN') {
+      if (this.mockCursor < folder.items.length - 1) {
+        this.mockCursor++;
+        setTimeout(() => {
+          this.emit('packet', { command: 'NLS', rawPayload: `C${this.mockCursor}` });
+        }, 5);
+      }
+      return;
+    }
+
+    if (command === 'NLARET') {
+      if (this.mockPath.length > 1) {
+        this.mockPath.pop();
+        this.mockCursor = 0;
+        const parentKey = this.mockPath[this.mockPath.length - 1] || 'root';
+        const parentFolder = MOCK_FOLDERS[parentKey] || MOCK_FOLDERS['root'];
+        setTimeout(() => {
+          this.emit('packet', { command: 'NLT', rawPayload: parentFolder.title });
+          parentFolder.items.forEach((item, idx) => {
+            const sep = item.type === 'folder' ? '/' : '-';
+            this.emit('packet', { command: 'NLS', rawPayload: `U${idx}${sep}${item.name}` });
+          });
+          this.emit('packet', { command: 'NLS', rawPayload: `C${this.mockCursor}` });
+        }, 10);
+      }
+      return;
+    }
+
+    if (command === 'NLAENT') {
+      const item = folder.items[this.mockCursor];
+      if (item) {
+        if (item.type === 'folder') {
+          this.mockPath.push(item.name);
+          this.mockCursor = 0;
+          const nextFolder = MOCK_FOLDERS[item.name] || { title: item.name, items: [] };
+          setTimeout(() => {
+            this.emit('packet', { command: 'NLT', rawPayload: nextFolder.title });
+            nextFolder.items.forEach((subItem, idx) => {
+              const sep = subItem.type === 'folder' ? '/' : '-';
+              this.emit('packet', { command: 'NLS', rawPayload: `U${idx}${sep}${subItem.name}` });
+            });
+            this.emit('packet', { command: 'NLS', rawPayload: `C${this.mockCursor}` });
+          }, 10);
+        } else {
+          // Play file
+          setTimeout(() => {
+            this.emit('packet', { command: 'NTI', rawPayload: item.name.replace(/\.[^/.]+$/, "") });
+            this.emit('packet', { command: 'NAT', rawPayload: 'Mock Artist' });
+            this.emit('packet', { command: 'NAL', rawPayload: folder.title });
+            this.emit('packet', { command: 'NST', rawPayload: 'P--' });
+          }, 10);
+        }
+      }
+      return;
+    }
+
+    if (command.startsWith('NLSI')) {
+      const idx = parseInt(command.substring(4), 10) - 1;
+      const item = folder.items[idx];
+      if (item) {
+        this.mockCursor = idx;
+        if (item.type === 'folder') {
+          this.mockPath.push(item.name);
+          this.mockCursor = 0;
+          const nextFolder = MOCK_FOLDERS[item.name] || { title: item.name, items: [] };
+          setTimeout(() => {
+            this.emit('packet', { command: 'NLT', rawPayload: nextFolder.title });
+            nextFolder.items.forEach((subItem, idx) => {
+              const sep = subItem.type === 'folder' ? '/' : '-';
+              this.emit('packet', { command: 'NLS', rawPayload: `U${idx}${sep}${subItem.name}` });
+            });
+            this.emit('packet', { command: 'NLS', rawPayload: `C${this.mockCursor}` });
+          }, 10);
+        } else {
+          // Play file
+          setTimeout(() => {
+            this.emit('packet', { command: 'NTI', rawPayload: item.name.replace(/\.[^/.]+$/, "") });
+            this.emit('packet', { command: 'NAT', rawPayload: 'Mock Artist' });
+            this.emit('packet', { command: 'NAL', rawPayload: folder.title });
+            this.emit('packet', { command: 'NST', rawPayload: 'P--' });
+          }, 10);
+        }
+      }
+      return;
+    }
+
     const responses: Record<string, ParsedPacket> = {
       [COMMANDS.POWER_QUERY]: { command: 'PWR', rawPayload: '01' },
       [COMMANDS.POWER_ON]: { command: 'PWR', rawPayload: '01' },
