@@ -1,19 +1,17 @@
 import { ArrowLeft, RotateCw, Plus, Search, CheckCircle, XCircle, Trash2, Edit2, Play } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import type { ShortcutStatus } from '../native/shortcuts';
 import type { useServiceManager, ServiceConfig, ReceiverDevice, TestConnectionResult } from '../ui/useServiceManager';
 
 type Props = {
   serviceManager: ReturnType<typeof useServiceManager>;
   serviceReachable: boolean;
   error: string | null;
-  shortcutStatus: ShortcutStatus[];
   onBack: () => void;
   onTest: () => void;
 };
 
-export function ServiceSettings({ serviceManager, serviceReachable, error, shortcutStatus, onBack, onTest }: Props) {
+export function ServiceSettings({ serviceManager, serviceReachable, error, onBack, onTest }: Props) {
   const [draft, setDraft] = useState<ServiceConfig>({ serviceMode: 'local' });
   const [isScanning, setIsScanning] = useState(false);
   const [discoveredDevices, setDiscoveredDevices] = useState<ReceiverDevice[]>([]);
@@ -28,9 +26,6 @@ export function ServiceSettings({ serviceManager, serviceReachable, error, short
       setDraft(serviceManager.config);
     }
   }, [serviceManager.config]);
-
-  const shortcutErrors = shortcutStatus.filter((shortcut) => shortcut.error);
-  const nativeShellMissing = shortcutErrors.every((shortcut) => shortcut.error?.includes('Tauri shell'));
 
   const activeDevice = draft.devices?.find(d => d.id === draft.activeDeviceId);
   const savedDevices = draft.devices || [];
@@ -123,34 +118,7 @@ export function ServiceSettings({ serviceManager, serviceReachable, error, short
 
       <div className="settings-section">
         <div className="section-header">
-          <h3>Active Device</h3>
-        </div>
-        {activeDevice ? (
-          <div className="device-card active">
-            <div className="device-info">
-              <strong>{activeDevice.name}</strong>
-              <span>{activeDevice.host}:{activeDevice.port}</span>
-              {testResults[activeDevice.id] && (
-                <span className={`status ${testResults[activeDevice.id].ok ? 'ok' : 'error'}`}>
-                  {testResults[activeDevice.id].ok ? 'Online' : 'Offline'}
-                </span>
-              )}
-            </div>
-            <div className="device-actions">
-              <button className="ghost-button" onClick={() => handleTestDevice(activeDevice)} disabled={testingId === activeDevice.id}>
-                {testingId === activeDevice.id ? 'Testing...' : 'Test'}
-              </button>
-              <button className="ghost-button" onClick={() => setEditingDevice(activeDevice)}><Edit2 size={14} /></button>
-            </div>
-          </div>
-        ) : (
-          <p className="settings-note">No active device selected.</p>
-        )}
-      </div>
-
-      <div className="settings-section">
-        <div className="section-header">
-          <h3>Saved Devices</h3>
+          <h3>Devices</h3>
           <div className="actions">
             <button className="ghost-button" onClick={handleScanLAN} disabled={isScanning}>
               <Search size={14} /> {isScanning ? 'Scanning...' : 'Scan LAN'}
@@ -186,115 +154,69 @@ export function ServiceSettings({ serviceManager, serviceReachable, error, short
           </div>
         )}
 
-        <div className="device-list">
-          {savedDevices.map(device => (
-            <div key={device.id} className="device-card">
-              <div className="device-info">
-                <strong>{device.name}</strong>
-                <span>{device.host}:{device.port}</span>
+        <div className="device-list-container">
+          {savedDevices.map(device => {
+            const isActive = device.id === activeDevice?.id;
+            return (
+              <div
+                key={device.id}
+                className={`device-card opt-b ${isActive ? 'active' : ''}`}
+                onClick={() => !isActive && handleUseDevice(device.id)}
+              >
+                <div className="device-info">
+                  <strong className="device-name-mock">
+                    {isActive && <span className="active-dot">●</span>}
+                    {device.name}
+                  </strong>
+                  <span>{device.host}:{device.port}</span>
+                  {testResults[device.id] && (
+                    <span className={`status ${testResults[device.id].ok ? 'ok' : 'error'}`} style={{ fontSize: '10px', marginTop: '2px' }}>
+                      {testResults[device.id].ok ? `Online (${testResults[device.id].latencyMs ?? '?'}ms)` : 'Offline'}
+                    </span>
+                  )}
+                </div>
+                <div className="device-actions" onClick={e => e.stopPropagation()}>
+                  <button className="ghost-button" onClick={() => handleTestDevice(device)} disabled={testingId === device.id}>
+                    {testingId === device.id ? '...' : 'Test'}
+                  </button>
+                  <button className="ghost-button icon-btn" onClick={() => setEditingDevice(device)}><Edit2 size={14} /></button>
+                  <button className="ghost-button icon-btn danger" onClick={() => handleDeleteDevice(device.id)}><Trash2 size={14} /></button>
+                </div>
               </div>
-              <div className="device-actions">
-                {device.id !== activeDevice?.id && (
-                  <button className="primary-button" onClick={() => handleUseDevice(device.id)}>Use</button>
-                )}
-                <button className="ghost-button" onClick={() => handleTestDevice(device)} disabled={testingId === device.id}>
-                  {testingId === device.id ? '...' : 'Test'}
-                </button>
-                <button className="ghost-button" onClick={() => setEditingDevice(device)}><Edit2 size={14} /></button>
-                <button className="ghost-button" onClick={() => handleDeleteDevice(device.id)}><Trash2 size={14} /></button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
+          {savedDevices.length === 0 && (
+            <p className="settings-note" style={{ padding: '12px', textAlign: 'center' }}>No devices saved.</p>
+          )}
         </div>
 
         {discoveredDevices.length > 0 && (
           <div className="discovered-list">
-            <div className="section-header">
+            <div className="section-header" style={{ marginTop: '12px' }}>
               <h3>Discovered Devices</h3>
               <div className="actions">
                 <button className="ghost-button" onClick={() => setDiscoveredDevices([])}>Clear</button>
               </div>
             </div>
-            {discoveredDevices.map((device, idx) => (
-              <div key={idx} className="device-card discovered">
-                <div className="device-info">
-                  <strong>{device.name}</strong>
-                  <span>{device.host}:{device.port}</span>
+            <div className="device-list-container">
+              {discoveredDevices.map((device, idx) => (
+                <div key={idx} className="device-card opt-b discovered">
+                  <div className="device-info">
+                    <strong>{device.name}</strong>
+                    <span>{device.host}:{device.port}</span>
+                  </div>
+                  <div className="device-actions">
+                    <button className="ghost-button" onClick={() => handleSaveDevice(device)}>Save</button>
+                  </div>
                 </div>
-                <div className="device-actions">
-                  <button className="ghost-button" onClick={() => handleSaveDevice(device)}>Save</button>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
       </div>
 
-      <div className="settings-section advanced-section">
-        <div className="section-header">
-          <h3>Advanced</h3>
-        </div>
-        <label className="field">
-          <span>Service Mode</span>
-          <select
-            value={draft.serviceMode}
-            onChange={(e) => {
-              const newDraft = { ...draft, serviceMode: e.target.value as 'local' | 'external' };
-              setDraft(newDraft);
-              serviceManager.updateConfig(newDraft);
-            }}
-            disabled={!serviceManager.isTauri}
-          >
-            <option value="local">Local (Managed)</option>
-            <option value="external">External URL</option>
-          </select>
-        </label>
-
-        {!serviceManager.isTauri && (
-          <p className="settings-note">Browser preview only supports External URL.</p>
-        )}
-
-        {draft.serviceMode === 'external' && (
-          <label className="field">
-            <span>External URL</span>
-            <div className="row">
-              <input
-                value={draft.externalUrl ?? ''}
-                onChange={(e) => setDraft({ ...draft, externalUrl: e.target.value })}
-                placeholder="http://192.168.1.50:8787"
-              />
-              <button className="primary-button" onClick={() => serviceManager.updateConfig(draft)}>Apply</button>
-            </div>
-          </label>
-        )}
-
-        {draft.serviceMode === 'local' && (
-          <label className="field checkbox-field">
-            <input
-              type="checkbox"
-              checked={draft.localConfig?.mockMode ?? false}
-              onChange={(e) => {
-                const newDraft = { ...draft, localConfig: { ...draft.localConfig, mockMode: e.target.checked } };
-                setDraft(newDraft);
-                serviceManager.updateConfig(newDraft);
-              }}
-            />
-            <span>Mock Mode (Simulate Receiver)</span>
-          </label>
-        )}
-      </div>
-
-      <div className="shortcut-list">
-        <h3>Shortcuts</h3>
-        {shortcutStatus.map((shortcut) => (
-          <p key={shortcut.id}>
-            <kbd>{shortcut.display}</kbd>
-            <span>{shortcut.label}</span>
-            <small className={shortcut.registered ? 'shortcut-ok' : 'shortcut-unavailable'}>
-              {shortcut.registered ? 'Active' : 'Unavailable'}
-            </small>
-          </p>
-        ))}
+      <div className="tip-box">
+        💡 <strong>Network Standby:</strong> Ensure "Network Standby" is enabled on your receiver (Setup → Network → Network Standby → On) to support powering it on from the app.
       </div>
 
       {error ? <p className="inline-error">{error}</p> : null}
