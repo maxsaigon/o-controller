@@ -240,9 +240,43 @@ describe('StateStore', () => {
       store.reduce({ command: 'NTI', rawPayload: 'Test' });
       store.reduce({ command: 'NAT', rawPayload: 'Artist' });
       store.resetNowPlaying();
-      const np = store.getState().nowPlaying;
-      assert.equal(np.title, '');
-      assert.equal(np.artist, '');
+      const np = store.getState();
+      assert.equal(np.nowPlaying.title, '');
+      assert.equal(np.nowPlaying.artist, '');
+    });
+  });
+
+  describe('NetList Reducer', () => {
+    it('should clear list items on NLT title change', () => {
+      const customStore = new StateStore({
+        netList: {
+          title: 'Old Title',
+          items: [{ index: 0, name: 'Stale Item', type: 'file' }],
+          cursor: 2,
+        }
+      });
+      customStore.reduce({ command: 'NLT', rawPayload: 'New Title' });
+      const state = customStore.getState();
+      assert.equal(state.netList.title, 'New Title');
+      assert.deepEqual(state.netList.items, []);
+      assert.equal(state.netList.cursor, -1);
+    });
+
+    it('should parse NLS folder and file items correctly', () => {
+      store.reduce({ command: 'NLS', rawPayload: 'U0/My Folder' });
+      store.reduce({ command: 'NLS', rawPayload: 'U1-My Track.mp3' });
+      
+      const state = store.getState();
+      assert.deepEqual(state.netList.items, [
+        { index: 0, name: 'My Folder', type: 'folder' },
+        { index: 1, name: 'My Track.mp3', type: 'file' }
+      ]);
+    });
+
+    it('should parse NLS cursor lines correctly', () => {
+      store.reduce({ command: 'NLS', rawPayload: 'C3' });
+      const state = store.getState();
+      assert.equal(state.netList.cursor, 3);
     });
   });
 });

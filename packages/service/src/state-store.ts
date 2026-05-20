@@ -8,6 +8,7 @@ import {
   DEFAULT_STATE,
   DEFAULT_NOW_PLAYING,
   INPUT_CODE_TO_ID,
+  DEFAULT_NET_LIST,
 } from '@o-control/shared';
 import { hexToVolume } from '@o-control/eiscp';
 import type { ParsedPacket } from '@o-control/eiscp';
@@ -269,6 +270,59 @@ export class StateStore {
         break;
       }
 
+      // ── Net List Title ──
+      case 'NLT': {
+        if (this.state.netList.title !== rawPayload) {
+          this.state.netList.title = rawPayload;
+          this.state.netList.items = []; // Clear items on folder change
+          this.state.netList.cursor = -1;
+          changed = true;
+        }
+        break;
+      }
+
+      // ── Net List Select/Info ──
+      case 'NLS': {
+        const type = rawPayload[0];
+        if (type === 'U' || type === 'A') {
+          const lineNum = parseInt(rawPayload[1], 10);
+          if (!isNaN(lineNum)) {
+            const separator = rawPayload[2];
+            const name = rawPayload.slice(3);
+            let itemType: 'folder' | 'file' | 'unknown' = 'unknown';
+            if (separator === '/') {
+              itemType = 'folder';
+            } else if (separator === '-') {
+              itemType = 'file';
+            }
+
+            const existingItems = [...this.state.netList.items];
+            const itemIdx = existingItems.findIndex(item => item.index === lineNum);
+            const newItem = { index: lineNum, name, type: itemType };
+
+            if (itemIdx >= 0) {
+              existingItems[itemIdx] = newItem;
+            } else {
+              existingItems.push(newItem);
+              existingItems.sort((a, b) => a.index - b.index);
+            }
+
+            this.state.netList.items = existingItems;
+            changed = true;
+          }
+        } else if (type === 'C') {
+          const match = rawPayload.match(/^C(\d+)/);
+          if (match) {
+            const cursor = parseInt(match[1], 10);
+            if (this.state.netList.cursor !== cursor) {
+              this.state.netList.cursor = cursor;
+              changed = true;
+            }
+          }
+        }
+        break;
+      }
+
       default:
         known = false;
     }
@@ -282,6 +336,12 @@ export class StateStore {
   /** Reset now-playing metadata (e.g. on input change) */
   resetNowPlaying(): void {
     this.state.nowPlaying = { ...DEFAULT_NOW_PLAYING };
+    this.notify();
+  }
+
+  /** Reset network list state */
+  resetNetList(): void {
+    this.state.netList = { ...DEFAULT_NET_LIST };
     this.notify();
   }
 
