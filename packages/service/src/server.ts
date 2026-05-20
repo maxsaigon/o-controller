@@ -138,21 +138,108 @@ function clearMetadataTimers(): void {
   }
 }
 
+let lastTitle = store.getState().nowPlaying.title;
+let currentFetchController: AbortController | null = null;
+let fetchTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Background worker to fetch the album art CGI with retry mechanism.
+ */
+async function resolveMusicServerCoverArt(targetTitle: string, retryCount = 0): Promise<void> {
+  // Guard against race conditions: check if track title changed
+  const state = store.getState();
+  if (state.nowPlaying.title !== targetTitle || !(state.input === 'net' || state.input === 'usb')) {
+    return;
+  }
+
+  // Cancel any existing fetch
+  if (currentFetchController) {
+    currentFetchController.abort();
+    currentFetchController = null;
+  }
+
+  currentFetchController = new AbortController();
+  const signal = currentFetchController.signal;
+
+  try {
+    const res = await fetch(`http://${config.ONKYO_HOST}/album_art.cgi`, { signal });
+    if (res.ok) {
+      const rawBuffer = Buffer.from(await res.arrayBuffer());
+      const cleaned = stripOnkyoHeaders(rawBuffer);
+      cachedCoverArt = cleaned;
+      store.setCoverArt('/cover-art?t=' + Date.now());
+      return;
+    }
+  } catch (err: any) {
+    if (err.name === 'AbortError') return;
+  }
+
+  // Retry logic (up to 2 retries, total 3 attempts)
+  if (retryCount < 2) {
+    const delay = retryCount === 0 ? 2000 : 4000;
+    fetchTimeoutId = setTimeout(() => {
+      void resolveMusicServerCoverArt(targetTitle, retryCount + 1);
+    }, delay);
+  } else {
+    // Final failure
+    store.setCoverArt(undefined);
+  }
+}
+
+function triggerCoverArtResolution(title: string): void {
+  // Clear any pending scheduled fetch
+  if (fetchTimeoutId) {
+    clearTimeout(fetchTimeoutId);
+    fetchTimeoutId = null;
+  }
+  if (currentFetchController) {
+    currentFetchController.abort();
+    currentFetchController = null;
+  }
+  cachedCoverArt = null;
+
+  if (title) {
+    if (config.MOCK_MODE) {
+      // Mock mode sets cover art immediately
+      store.setCoverArt('/cover-art?t=' + Date.now());
+    } else {
+      // Real receiver starts background resolution after 1000ms delay
+      fetchTimeoutId = setTimeout(() => {
+        void resolveMusicServerCoverArt(title, 0);
+      }, 1000);
+    }
+  } else {
+    store.setCoverArt(undefined);
+  }
+}
+
 store.subscribe((state) => {
   if (!state.connected) {
     clearMetadataTimers();
     lastPlayback = state.playback;
     lastInput = state.input;
+    lastTitle = state.nowPlaying.title;
     return;
   }
 
   if (state.input !== lastInput) {
     lastInput = state.input;
     lastPlayback = state.playback;
+    lastTitle = '';
     store.resetNowPlaying();
+    triggerCoverArtResolution('');
     scheduleMetadataRefresh(1000);
   } else if (state.playback !== lastPlayback && state.playback === 'playing') {
     scheduleMetadataRefresh(1000);
+  }
+
+  if (state.nowPlaying.title !== lastTitle) {
+    lastTitle = state.nowPlaying.title;
+    if (state.input === 'net' || state.input === 'usb') {
+      triggerCoverArtResolution(state.nowPlaying.title);
+    } else {
+      triggerCoverArtResolution('');
+    }
   }
 
   if (state.playback === 'playing' && !timeQueryTimer) {
