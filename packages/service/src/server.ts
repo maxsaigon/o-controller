@@ -38,6 +38,30 @@ const receiver = new ReceiverClient({
   mockMode: config.MOCK_MODE,
 });
 
+const CORE_QUERIES = [
+  COMMANDS.POWER_QUERY,
+  COMMANDS.VOLUME_QUERY,
+  COMMANDS.MUTE_QUERY,
+  COMMANDS.INPUT_QUERY,
+  COMMANDS.PLAYBACK_STATUS_QUERY,
+];
+
+const METADATA_QUERIES = [
+  COMMANDS.TITLE_QUERY,
+  COMMANDS.ARTIST_QUERY,
+  COMMANDS.ALBUM_QUERY,
+  COMMANDS.TIME_QUERY,
+  COMMANDS.TRACK_QUERY,
+  COMMANDS.FORMAT_QUERY,
+];
+
+let metadataRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+let timeQueryTimer: ReturnType<typeof setInterval> | undefined;
+let lastPlayback = store.getState().playback;
+let lastInput = store.getState().input;
+let hasQueriedCore = false;
+let hasScheduledInitialMetadataRefresh = false;
+
 // Wire receiver events to state store
 receiver.on('packet', (packet: ParsedPacket) => {
   const known = store.reduce(packet);
@@ -48,66 +72,88 @@ receiver.on('packet', (packet: ParsedPacket) => {
 
 receiver.on('connected', () => {
   store.setConnected(true);
-  // Query initial state
-  void queryInitialState();
+  if (!hasQueriedCore) {
+    hasQueriedCore = true;
+    void queryInitialState();
+  }
+  if (!hasScheduledInitialMetadataRefresh) {
+    hasScheduledInitialMetadataRefresh = true;
+    scheduleMetadataRefresh(1200);
+  }
 });
 
 receiver.on('disconnected', () => {
   store.setConnected(false);
+  clearMetadataTimers();
 });
 
-async function queryInitialState(): Promise<void> {
-  const queries = [
-    COMMANDS.POWER_QUERY,
-    COMMANDS.VOLUME_QUERY,
-    COMMANDS.MUTE_QUERY,
-    COMMANDS.INPUT_QUERY,
-    COMMANDS.PLAYBACK_STATUS_QUERY,
-    COMMANDS.TITLE_QUERY,
-    COMMANDS.ARTIST_QUERY,
-    COMMANDS.ALBUM_QUERY,
-    COMMANDS.TIME_QUERY,
-    COMMANDS.TRACK_QUERY,
-  ];
-  for (const cmd of queries) {
+async function sendQueries(commands: readonly string[], context: string): Promise<void> {
+  for (const cmd of commands) {
     try {
       await receiver.send(cmd);
     } catch (err) {
-      app.log.error({ err, cmd }, 'Failed to query initial state');
+      app.log.error({ err, cmd, context }, 'Failed to query receiver');
     }
   }
 }
 
-// ── Metadata Polling ─────────────────────────────────────────
-let lastInput = store.getState().input;
-let lastPlayback = store.getState().playback;
-let timeQueryInterval: ReturnType<typeof setInterval> | null = null;
+async function queryInitialState(): Promise<void> {
+  await sendQueries(CORE_QUERIES, 'initial-state');
+}
+
+async function queryMetadata(): Promise<void> {
+  await sendQueries(METADATA_QUERIES, 'metadata-refresh');
+}
+
+function scheduleMetadataRefresh(delayMs = 800): void {
+  if (metadataRefreshTimer) {
+    clearTimeout(metadataRefreshTimer);
+  }
+  metadataRefreshTimer = setTimeout(() => {
+    metadataRefreshTimer = undefined;
+    void queryMetadata();
+  }, delayMs);
+}
+
+function clearMetadataTimers(): void {
+  if (metadataRefreshTimer) {
+    clearTimeout(metadataRefreshTimer);
+    metadataRefreshTimer = undefined;
+  }
+  if (timeQueryTimer) {
+    clearInterval(timeQueryTimer);
+    timeQueryTimer = undefined;
+  }
+}
 
 store.subscribe((state) => {
-  if (state.connected && (state.input !== lastInput || state.playback !== lastPlayback)) {
-    if (state.input !== lastInput || (state.playback === 'playing' && lastPlayback !== 'playing')) {
-      void receiver.send(COMMANDS.TITLE_QUERY);
-      void receiver.send(COMMANDS.ARTIST_QUERY);
-      void receiver.send(COMMANDS.ALBUM_QUERY);
-      void receiver.send(COMMANDS.TIME_QUERY);
-      void receiver.send(COMMANDS.TRACK_QUERY);
-    }
-    lastInput = state.input;
+  if (!state.connected) {
+    clearMetadataTimers();
     lastPlayback = state.playback;
+    lastInput = state.input;
+    return;
   }
 
-  if (state.connected && state.playback === 'playing') {
-    if (!timeQueryInterval) {
-      timeQueryInterval = setInterval(() => {
-        void receiver.send(COMMANDS.TIME_QUERY);
-      }, 1500);
-    }
-  } else {
-    if (timeQueryInterval) {
-      clearInterval(timeQueryInterval);
-      timeQueryInterval = null;
-    }
+  if (state.input !== lastInput) {
+    lastInput = state.input;
+    lastPlayback = state.playback;
+    store.resetNowPlaying();
+    scheduleMetadataRefresh(1000);
+  } else if (state.playback !== lastPlayback && state.playback === 'playing') {
+    scheduleMetadataRefresh(1000);
   }
+
+  if (state.playback === 'playing' && !timeQueryTimer) {
+    timeQueryTimer = setInterval(() => {
+      void sendQueries([COMMANDS.TIME_QUERY], 'time-refresh');
+    }, 5000);
+  } else if (state.playback !== 'playing' && timeQueryTimer) {
+    clearInterval(timeQueryTimer);
+    timeQueryTimer = undefined;
+  }
+
+  lastPlayback = state.playback;
+  lastInput = state.input;
 });
 
 // ── WebSocket plugin ─────────────────────────────────────────
@@ -139,6 +185,54 @@ app.get('/state', async () => {
 // Presets list
 app.get('/presets', async () => {
   return loadPresets();
+});
+
+app.get('/cover-art', async (request, reply) => {
+  const state = store.getState();
+
+  // 1. If we have a base64 data URI in the state store, parse and return it
+  if (state.nowPlaying.coverArtUrl?.startsWith('data:')) {
+    const match = state.nowPlaying.coverArtUrl.match(/^data:([^;]+);base64,(.+)$/);
+    if (match) {
+      const contentType = match[1];
+      const buffer = Buffer.from(match[2], 'base64');
+      reply.type(contentType).send(buffer);
+      return;
+    }
+  }
+
+  // 2. If the receiver provided a URL, use that URL directly.
+  if (state.nowPlaying.coverArtUrl?.startsWith('http')) {
+    reply.redirect(state.nowPlaying.coverArtUrl);
+    return;
+  }
+
+  // 3. CR-N775 exposes the current cover at this endpoint when Music Server is active.
+  if (state.connected && config.ONKYO_HOST) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1200);
+
+      const res = await fetch(`http://${config.ONKYO_HOST}/album_art.cgi`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const buffer = await res.arrayBuffer();
+        const contentType = res.headers.get('content-type') || 'image/jpeg';
+        reply.type(contentType).send(Buffer.from(buffer));
+        return;
+      }
+    } catch (e) {
+      // Fetch failed or timed out, fall through
+    }
+  }
+
+  reply.code(404).send({
+    success: false,
+    message: 'Cover art unavailable',
+  });
 });
 
 // ── Command Endpoints ────────────────────────────────────────
@@ -241,13 +335,7 @@ app.post('/commands/playback', async (request, reply) => {
   await receiver.send(cmd);
 
   if (body.action === 'next' || body.action === 'previous' || body.action === 'play') {
-    setTimeout(() => {
-      void receiver.send(COMMANDS.TITLE_QUERY);
-      void receiver.send(COMMANDS.ARTIST_QUERY);
-      void receiver.send(COMMANDS.ALBUM_QUERY);
-      void receiver.send(COMMANDS.TIME_QUERY);
-      void receiver.send(COMMANDS.TRACK_QUERY);
-    }, 600);
+    scheduleMetadataRefresh(1200);
   }
 
   return { success: true, command: cmd };
@@ -333,6 +421,47 @@ export async function start(): Promise<void> {
     app.log.fatal(err);
     process.exit(1);
   }
+}
+
+/**
+ * Safely strips the 3-line proprietary header from the Onkyo CGI response.
+ * Scans for common image magic bytes first (JPEG, PNG, BMP) as a primary check.
+ * Falls back to finding the 3rd newline character (0x0A) within the first 500 bytes.
+ */
+export function stripOnkyoHeaders(buffer: Buffer): Buffer {
+  // 1. Scan for JPEG signature (FF D8)
+  const jpegIdx = buffer.indexOf(Buffer.from([0xff, 0xd8]));
+  if (jpegIdx !== -1 && jpegIdx < 500) {
+    return buffer.subarray(jpegIdx);
+  }
+
+  // 2. Scan for PNG signature (89 50 4E 47)
+  const pngIdx = buffer.indexOf(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  if (pngIdx !== -1 && pngIdx < 500) {
+    return buffer.subarray(pngIdx);
+  }
+
+  // 3. Scan for BMP signature (42 4D)
+  const bmpIdx = buffer.indexOf(Buffer.from([0x42, 0x4d]));
+  if (bmpIdx !== -1 && bmpIdx < 500) {
+    return buffer.subarray(bmpIdx);
+  }
+
+  // 4. Fallback to scanning for the 3rd newline
+  let newlineCount = 0;
+  let idx = 0;
+  while (newlineCount < 3 && idx < buffer.length && idx < 500) {
+    if (buffer[idx] === 0x0a) {
+      newlineCount++;
+    }
+    idx++;
+  }
+
+  if (newlineCount === 3) {
+    return buffer.subarray(idx);
+  }
+
+  return buffer;
 }
 
 // Export for testing

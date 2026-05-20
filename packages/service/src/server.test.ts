@@ -305,11 +305,72 @@ describe('POST /presets/:id/run', () => {
   });
 });
 
+// GET /cover-art
+
+describe('GET /cover-art', () => {
+  beforeEach(() => {
+    store.resetNowPlaying();
+  });
+
+  it('should return 404 if no cover art is available', async () => {
+    const res = await app.inject({ method: 'GET', url: '/cover-art' });
+    assert.equal(res.statusCode, 404);
+    const body = JSON.parse(res.payload);
+    assert.equal(body.success, false);
+  });
+
+  it('should redirect to http URL if coverArtUrl is a web URL', async () => {
+    store.setCoverArt('https://example.com/album.jpg');
+    const res = await app.inject({ method: 'GET', url: '/cover-art' });
+    assert.equal(res.statusCode, 302);
+    assert.equal(res.headers.location, 'https://example.com/album.jpg');
+  });
+
+  it('should return decoded binary buffer if coverArtUrl is base64 data URI', async () => {
+    // Red pixel 1x1 png
+    const pngBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    store.setCoverArt(pngBase64);
+
+    const res = await app.inject({ method: 'GET', url: '/cover-art' });
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.headers['content-type'], 'image/png');
+    // Verify payload is correct binary
+    const expectedBuffer = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    assert.deepEqual(res.rawPayload, expectedBuffer);
+  });
+});
+
 // 404 for unknown routes
 
 describe('Unknown routes', () => {
   it('should return 404 for undefined routes', async () => {
     const res = await app.inject({ method: 'GET', url: '/nonexistent' });
     assert.equal(res.statusCode, 404);
+  });
+});
+
+describe('stripOnkyoHeaders', () => {
+  it('should strip headers by identifying JPEG magic bytes (FF D8)', async () => {
+    const { stripOnkyoHeaders } = await import('./server.js');
+    const input = Buffer.concat([
+      Buffer.from('Header 1\nHeader 2\nHeader 3\nGarbageBytes'),
+      Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]) // JPEG headers
+    ]);
+    const result = stripOnkyoHeaders(input);
+    assert.deepEqual(result, Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]));
+  });
+
+  it('should strip headers by finding the 3rd newline when no magic signature matches', async () => {
+    const { stripOnkyoHeaders } = await import('./server.js');
+    const input = Buffer.from('Line1\nLine2\nLine3\nCleanPayloadHere');
+    const result = stripOnkyoHeaders(input);
+    assert.equal(result.toString(), 'CleanPayloadHere');
+  });
+
+  it('should return raw buffer if fewer than 3 newlines exist and no magic signature matches', async () => {
+    const { stripOnkyoHeaders } = await import('./server.js');
+    const input = Buffer.from('NoNewlinesHere');
+    const result = stripOnkyoHeaders(input);
+    assert.equal(result.toString(), 'NoNewlinesHere');
   });
 });
