@@ -74,88 +74,12 @@ let lastInput = store.getState().input;
 let hasQueriedCore = false;
 let hasScheduledInitialMetadataRefresh = false;
 
-let scanTimer: ReturnType<typeof setTimeout> | undefined;
-let scanActive = false;
-let scanFolder = '';
-
-function abortScan() {
-  scanActive = false;
-  if (scanTimer) {
-    clearTimeout(scanTimer);
-    scanTimer = undefined;
-  }
-}
-
-/**
- * Safe background pre-fetch: uses OSDDOWN to scroll through the list.
- * Unlike NLSI (which selects/plays items), OSDDOWN only moves the
- * cursor and the receiver responds with NLS packets for nearby items
- * without triggering playback.
- */
-async function startScanIfNeeded() {
-  const state = store.getState();
-  const netList = state.netList;
-
-  if (state.input !== 'net' && state.input !== 'usb') {
-    abortScan();
-    return;
-  }
-
-  // Reset scan when entering a new folder
-  if (netList.title !== scanFolder) {
-    abortScan();
-    scanFolder = netList.title;
-  }
-
-  // Only scan if we know total and haven't loaded everything yet
-  if (netList.totalItems > 0 && netList.items.length < netList.totalItems) {
-    if (scanActive) return;
-    scanActive = true;
-    app.log.info(
-      { title: netList.title, loaded: netList.items.length, total: netList.totalItems },
-      'Starting safe background list scroll-scan'
-    );
-    void scrollScanStep();
-  }
-}
-
-async function scrollScanStep() {
-  if (!scanActive) return;
-
-  const state = store.getState();
-  const netList = state.netList;
-
-  // Stop if we've loaded all items or scan was aborted
-  if (netList.items.length >= netList.totalItems || netList.title !== scanFolder) {
-    app.log.info({ title: netList.title }, 'Background scroll-scan complete');
-    scanActive = false;
-    return;
-  }
-
-  try {
-    // OSDDOWN moves the cursor down by 1, causing receiver to emit
-    // NLS packets for items in the new visible window — safe, no playback
-    await receiver.send('OSDDOWN');
-  } catch (err) {
-    app.log.error(err, 'Scroll-scan OSDDOWN failed');
-  }
-
-  // Wait 200ms for receiver to respond, then check again
-  scanTimer = setTimeout(() => {
-    void scrollScanStep();
-  }, 200);
-}
-
 // Wire receiver events to state store
 receiver.on('packet', (packet: ParsedPacket) => {
   const known = store.reduce(packet);
   if (!known) {
     app.log.info({ cmd: packet.command, payload: packet.rawPayload }, 'Unknown eISCP event');
   }
-});
-
-store.subscribe(() => {
-  void startScanIfNeeded();
 });
 
 receiver.on('connected', () => {
@@ -562,9 +486,6 @@ const listQuerySchema = z.object({
 });
 
 app.post('/commands/list/action', async (request, reply) => {
-  // User manual action! Abort background scan and prevent automatic restart for this folder
-  abortScan();
-  scanFolder = '';
 
   const body = listActionSchema.parse(request.body);
   let cmd: string;
