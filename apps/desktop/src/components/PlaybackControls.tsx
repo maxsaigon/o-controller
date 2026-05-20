@@ -1,5 +1,5 @@
 import type { PlaybackCommand, PlaybackStatus } from '@o-control/shared';
-import { Pause, Play, SkipBack, SkipForward, Square } from 'lucide-react';
+import { Pause, Play, SkipBack, SkipForward } from 'lucide-react';
 
 type Props = {
   playback: PlaybackStatus;
@@ -20,9 +20,6 @@ export function PlaybackControls({ playback, disabled, pendingCommand, onAction 
       <button className="primary-play" type="button" title={playPause === 'pause' ? 'Pause' : 'Play'} aria-label={playPause === 'pause' ? 'Pause' : 'Play'} disabled={disabled || playPending} onClick={() => onAction(playPause)}>
         {playPause === 'pause' ? <Pause size={20} /> : <Play size={20} />}
         <span className="sr-only">{playPending ? 'Updating' : playback === 'playing' ? 'Pause' : 'Play'}</span>
-      </button>
-      <button className="round-button" type="button" title="Stop" disabled={disabled} onClick={() => onAction('stop')}>
-        <Square size={15} />
       </button>
       <button className="round-button" type="button" title="Next" disabled={disabled} onClick={() => onAction('next')}>
         <SkipForward size={17} />
