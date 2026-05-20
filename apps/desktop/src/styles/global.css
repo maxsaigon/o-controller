@@ -946,3 +946,171 @@ kbd {
   color: #9cd5ff;
   margin-top: auto;
 }
+
+/* NetList Component Styles */
+.netlist-panel {
+  display: flex;
+  flex-direction: column;
+  height: 250px;
+  min-height: 250px;
+  max-height: 250px;
+  padding: 14px 18px 10px;
+  box-sizing: border-box;
+}
+
+.netlist-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid rgba(229, 226, 221, 0.1);
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.netlist-back-btn {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(229, 226, 221, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #e5e2dd;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.netlist-back-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(229, 226, 221, 0.24);
+}
+
+.netlist-title-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.netlist-title-group h2 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e5e2dd;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0;
+}
+
+.netlist-title-group span {
+  font-size: 10px;
+  color: #817d78;
+  margin-top: 1px;
+}
+
+.netlist-items-container {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.netlist-scroll-area {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  height: 100%;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.netlist-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  color: #e5e2dd;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.netlist-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.netlist-item.selected {
+  border-color: rgba(69, 170, 255, 0.6);
+  color: #e9f5ff;
+  background: rgba(69, 170, 255, 0.12);
+}
+
+.netlist-item-icon {
+  display: inline-flex;
+  align-items: center;
+  color: #817d78;
+}
+
+.netlist-item.selected .netlist-item-icon {
+  color: #45aaff;
+}
+
+.netlist-item-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.netlist-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  color: #817d78;
+  font-size: 12px;
+}
+
+.list-warning-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 250px;
+  padding: 18px;
+  box-sizing: border-box;
+}
+
+.list-warning-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  max-width: 260px;
+  text-align: center;
+}
+
+.list-warning-content p {
+  color: #aaa7a2;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.switch-input-btn {
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 560;
+}
+
+.text-muted {
+  color: #817d78;
+}
