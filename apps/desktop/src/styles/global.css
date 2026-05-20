@@ -60,7 +60,7 @@ p {
   width: min(100%, 392px);
   height: 100%;
   min-height: 0;
-  max-height: 620px;
+  max-height: 760px;
   overflow: hidden;
   border: 1px solid rgba(229, 226, 221, 0.16);
   border-radius: 8px;

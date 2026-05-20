@@ -3,6 +3,7 @@ import type { NowPlayingMeta, PlaybackStatus } from '@o-control/shared';
 type Props = {
   playback: PlaybackStatus;
   nowPlaying: NowPlayingMeta;
+  serviceUrl: string;
 };
 
 function parseTime(timeStr: string): number {
@@ -13,25 +14,36 @@ function parseTime(timeStr: string): number {
   return 0;
 }
 
-export function NowPlaying({ playback, nowPlaying }: Props) {
+function formatTimeDisplay(timeStr: string): string {
+  if (!timeStr) return '--:--';
+  const parts = timeStr.split(':');
+  if (parts.length === 3) {
+    const hours = parseInt(parts[0], 10);
+    const mins = parseInt(parts[1], 10) + hours * 60;
+    return `${String(mins).padStart(2, '0')}:${parts[2]}`;
+  }
+  return timeStr;
+}
+
+export function NowPlaying({ playback, nowPlaying, serviceUrl }: Props) {
   const hasTitle = nowPlaying.title.trim().length > 0;
   const detail = [nowPlaying.artist, nowPlaying.album].filter(Boolean).join(' - ');
   const formatDetail = [nowPlaying.format, nowPlaying.sampleRate, nowPlaying.bitDepth].filter(Boolean).join(' / ');
-
-  let playbackLabel = playback === 'unknown' ? 'Idle' : playback;
-  if (!nowPlaying.title && playback === 'stopped') {
-    playbackLabel = 'Stopped';
-  }
 
   const currentSecs = parseTime(nowPlaying.currentTime);
   const totalSecs = parseTime(nowPlaying.totalTime);
   const progressPercent = totalSecs > 0 ? Math.min(100, Math.max(0, (currentSecs / totalSecs) * 100)) : 0;
 
+  const hasCoverArt = !!nowPlaying.coverArtUrl;
+  const coverArtSrc = hasCoverArt
+    ? `${serviceUrl}/cover-art?t=${encodeURIComponent(nowPlaying.title + nowPlaying.artist)}`
+    : null;
+
   return (
     <section className="now-playing" aria-label="Now playing">
       <div className="artwork-container">
-        {nowPlaying.coverArtUrl ? (
-          <img src={nowPlaying.coverArtUrl} alt="Cover Artwork" className="artwork-image" />
+        {coverArtSrc ? (
+          <img src={coverArtSrc} alt="Cover Artwork" className="artwork-image" />
         ) : (
           <div className="artwork-placeholder" aria-hidden="true">
             <span />
@@ -40,15 +52,14 @@ export function NowPlaying({ playback, nowPlaying }: Props) {
       </div>
 
       <div className="progress-container">
-        <span className="time-text">{nowPlaying.currentTime || '--:--'}</span>
+        <span className="time-text">{formatTimeDisplay(nowPlaying.currentTime)}</span>
         <div className="progress-bar-bg">
           <div className="progress-bar-fill" style={{ width: `${progressPercent}%` }} />
         </div>
-        <span className="time-text">{nowPlaying.totalTime || '--:--'}</span>
+        <span className="time-text">{formatTimeDisplay(nowPlaying.totalTime)}</span>
       </div>
 
       <div className="track-copy">
-        <p className="playback-status">{playbackLabel}</p>
         <p className="track-title">{hasTitle ? nowPlaying.title : 'No track info'}</p>
         {detail ? <p className="track-detail">{detail}</p> : <p className="track-detail muted-text">Metadata unavailable</p>}
         {formatDetail ? <p className="track-format">{formatDetail}</p> : null}
