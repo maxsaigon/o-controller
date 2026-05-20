@@ -74,95 +74,76 @@ let lastInput = store.getState().input;
 let hasQueriedCore = false;
 let hasScheduledInitialMetadataRefresh = false;
 
-let isScanning = false;
-let originalCursor = -1;
-let lastScannedFolder = '';
-let scanTimeoutTimer: ReturnType<typeof setTimeout> | undefined;
-const attemptedIndices = new Set<number>();
+let scanTimer: ReturnType<typeof setTimeout> | undefined;
+let scanActive = false;
+let scanFolder = '';
 
 function abortScan() {
-  isScanning = false;
-  attemptedIndices.clear();
-  if (scanTimeoutTimer) {
-    clearTimeout(scanTimeoutTimer);
-    scanTimeoutTimer = undefined;
+  scanActive = false;
+  if (scanTimer) {
+    clearTimeout(scanTimer);
+    scanTimer = undefined;
   }
 }
 
-async function startScanIfRequired() {
+/**
+ * Safe background pre-fetch: uses OSDDOWN to scroll through the list.
+ * Unlike NLSI (which selects/plays items), OSDDOWN only moves the
+ * cursor and the receiver responds with NLS packets for nearby items
+ * without triggering playback.
+ */
+async function startScanIfNeeded() {
   const state = store.getState();
   const netList = state.netList;
 
-  // Only scan if on Network or USB input
   if (state.input !== 'net' && state.input !== 'usb') {
     abortScan();
     return;
   }
 
-  // If folder title changed, reset scan context
-  if (netList.title !== lastScannedFolder) {
+  // Reset scan when entering a new folder
+  if (netList.title !== scanFolder) {
     abortScan();
-    lastScannedFolder = netList.title;
-    originalCursor = netList.cursor;
+    scanFolder = netList.title;
   }
 
+  // Only scan if we know total and haven't loaded everything yet
   if (netList.totalItems > 0 && netList.items.length < netList.totalItems) {
-    if (isScanning) return;
-
-    // Save original cursor position if not already saved
-    if (originalCursor === -1 && netList.cursor !== -1) {
-      originalCursor = netList.cursor;
-    }
-
-    isScanning = true;
-    app.log.info({ title: netList.title, total: netList.totalItems }, 'Starting background list pre-fetch');
-    void continueScan();
+    if (scanActive) return;
+    scanActive = true;
+    app.log.info(
+      { title: netList.title, loaded: netList.items.length, total: netList.totalItems },
+      'Starting safe background list scroll-scan'
+    );
+    void scrollScanStep();
   }
 }
 
-async function continueScan() {
-  if (!isScanning) return;
+async function scrollScanStep() {
+  if (!scanActive) return;
 
   const state = store.getState();
   const netList = state.netList;
 
-  // Find first missing item index that hasn't been attempted yet
-  let firstMissingIdx = -1;
-  for (let i = 0; i < netList.totalItems; i++) {
-    if (!netList.items.some(item => item.index === i) && !attemptedIndices.has(i)) {
-      firstMissingIdx = i;
-      break;
-    }
+  // Stop if we've loaded all items or scan was aborted
+  if (netList.items.length >= netList.totalItems || netList.title !== scanFolder) {
+    app.log.info({ title: netList.title }, 'Background scroll-scan complete');
+    scanActive = false;
+    return;
   }
 
-  if (firstMissingIdx !== -1) {
-    attemptedIndices.add(firstMissingIdx);
-    try {
-      const targetIndexStr = String(firstMissingIdx + 1).padStart(5, '0');
-      app.log.info({ index: firstMissingIdx, cmd: `NLSI${targetIndexStr}` }, 'Background scanning page');
-      await receiver.send(`NLSI${targetIndexStr}`);
-    } catch (err) {
-      app.log.error(err, 'Failed to send scan select command');
-    }
-
-    // Schedule next scan step after 250ms to allow receiver to respond and update state
-    scanTimeoutTimer = setTimeout(() => {
-      void continueScan();
-    }, 250);
-  } else {
-    // Scan complete! Restore original cursor if needed
-    if (originalCursor !== -1 && netList.cursor !== originalCursor) {
-      try {
-        const restoreIndexStr = String(originalCursor + 1).padStart(5, '0');
-        app.log.info({ restoreIndex: originalCursor }, 'Restoring original selection cursor');
-        await receiver.send(`NLSI${restoreIndexStr}`);
-      } catch (err) {
-        app.log.error(err, 'Failed to restore selection cursor');
-      }
-    }
-    app.log.info({ title: netList.title }, 'Background list pre-fetch complete');
-    isScanning = false;
+  try {
+    // OSDDOWN moves the cursor down by 1, causing receiver to emit
+    // NLS packets for items in the new visible window — safe, no playback
+    await receiver.send('OSDDOWN');
+  } catch (err) {
+    app.log.error(err, 'Scroll-scan OSDDOWN failed');
   }
+
+  // Wait 200ms for receiver to respond, then check again
+  scanTimer = setTimeout(() => {
+    void scrollScanStep();
+  }, 200);
 }
 
 // Wire receiver events to state store
@@ -174,7 +155,7 @@ receiver.on('packet', (packet: ParsedPacket) => {
 });
 
 store.subscribe(() => {
-  void startScanIfRequired();
+  void startScanIfNeeded();
 });
 
 receiver.on('connected', () => {
@@ -583,7 +564,7 @@ const listQuerySchema = z.object({
 app.post('/commands/list/action', async (request, reply) => {
   // User manual action! Abort background scan and prevent automatic restart for this folder
   abortScan();
-  lastScannedFolder = '';
+  scanFolder = '';
 
   const body = listActionSchema.parse(request.body);
   let cmd: string;
