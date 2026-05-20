@@ -12,6 +12,25 @@ export const NetList: React.FC<NetListProps> = ({ state, pendingCommand, command
   const isNetOrUsb = state.input === 'net' || state.input === 'usb';
   const { title, items, cursor } = state.netList;
   const listRef = useRef<HTMLDivElement>(null);
+  const lastScrollTime = useRef<number>(0);
+
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (!isNetOrUsb || items.length === 0) return;
+
+    const now = Date.now();
+    // Throttle scroll wheel events to at most once per 120ms to avoid flooding the receiver
+    if (now - lastScrollTime.current < 120) {
+      return;
+    }
+
+    if (e.deltaY > 0) {
+      lastScrollTime.current = now;
+      void command('/commands/list/action', { action: 'down' }, 'Scrolling down');
+    } else if (e.deltaY < 0) {
+      lastScrollTime.current = now;
+      void command('/commands/list/action', { action: 'up' }, 'Scrolling up');
+    }
+  };
 
   useEffect(() => {
     if (isNetOrUsb && items.length === 0) {
@@ -125,7 +144,7 @@ export const NetList: React.FC<NetListProps> = ({ state, pendingCommand, command
         </div>
       </div>
 
-      <div className="netlist-items-container" ref={listRef}>
+      <div className="netlist-items-container" ref={listRef} onWheel={handleWheel}>
         {items.length === 0 ? (
           <div className="netlist-empty">
             <Loader2 className="animate-spin text-muted" size={24} />
