@@ -491,19 +491,16 @@ app.post('/commands/list/action', async (request, reply) => {
 
   switch (body.action) {
     case 'up':
-      cmd = 'NLAUP';
+      cmd = 'OSDUP';
       break;
     case 'down':
-      cmd = 'NLADN';
+      cmd = 'OSDDOWN';
       break;
     case 'enter':
-      cmd = 'NLAENT';
+      cmd = 'OSDENTER';
       break;
     case 'back':
-      // Send standard list return first
-      await receiver.send('NLARET');
-      // Also send general remote control Return key to ensure compatibility on all models (like CR-N775)
-      cmd = 'IEC17';
+      cmd = 'OSDRETURN';
       break;
     case 'select': {
       const selectIndex = body.index !== undefined ? body.index + 1 : 1;
@@ -512,7 +509,7 @@ app.post('/commands/list/action', async (request, reply) => {
       await receiver.send(cmd);
       // Wait 50ms before sending enter/play command to ensure receiver registers selection
       await new Promise((resolve) => setTimeout(resolve, 50));
-      cmd = 'NLAENT';
+      cmd = 'OSDENTER';
       break;
     }
   }

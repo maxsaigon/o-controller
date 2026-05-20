@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Folder, Music, ChevronLeft, ChevronUp, ChevronDown, Loader2 } from 'lucide-react';
+import { Folder, Music, Play, Plus, ChevronLeft, ChevronUp, ChevronDown, Loader2 } from 'lucide-react';
 import type { OControlState } from '@o-control/shared';
 
 interface NetListProps {
@@ -135,20 +135,38 @@ export const NetList: React.FC<NetListProps> = ({ state, pendingCommand, command
           <div className="netlist-scroll-area">
             {items.map((item) => {
               const isSelected = item.index === cursor;
+              const cleanItemName = item.name.replace(/\.[^/.]+$/, "");
+              const isPlaying = 
+                item.type === 'file' && 
+                !!state.nowPlaying.title && 
+                cleanItemName.toLowerCase() === state.nowPlaying.title.toLowerCase();
+
               return (
                 <div
                   key={item.index}
-                  className={`netlist-item ${item.type} ${isSelected ? 'selected' : ''}`}
+                  className={`netlist-item ${item.type} ${isSelected ? 'selected' : ''} ${isPlaying ? 'playing' : ''}`}
                   onClick={() => handleSelectItem(item.index)}
                 >
                   <span className="netlist-item-icon">
                     {item.type === 'folder' ? (
                       <Folder size={14} />
+                    ) : isPlaying ? (
+                      <Play size={14} />
                     ) : (
                       <Music size={14} />
                     )}
                   </span>
                   <span className="netlist-item-text">{item.name}</span>
+                  <button 
+                    className="netlist-item-add-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectItem(item.index);
+                    }}
+                    title="Play/Enter"
+                  >
+                    <Plus size={14} />
+                  </button>
                 </div>
               );
             })}

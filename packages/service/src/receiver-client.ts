@@ -298,7 +298,7 @@ export class ReceiverClient extends EventEmitter {
       return;
     }
 
-    if (command === 'NLAUP') {
+    if (command === 'NLAUP' || command === 'OSDUP') {
       if (this.mockCursor > 0) {
         this.mockCursor--;
         setTimeout(() => {
@@ -308,7 +308,7 @@ export class ReceiverClient extends EventEmitter {
       return;
     }
 
-    if (command === 'NLADN') {
+    if (command === 'NLADN' || command === 'OSDDOWN') {
       if (this.mockCursor < folder.items.length - 1) {
         this.mockCursor++;
         setTimeout(() => {
@@ -318,7 +318,7 @@ export class ReceiverClient extends EventEmitter {
       return;
     }
 
-    if (command === 'NLARET' || command === 'IEC17') {
+    if (command === 'NLARET' || command === 'IEC17' || command === 'OSDRETURN') {
       if (this.mockPath.length > 1) {
         this.mockPath.pop();
         this.mockCursor = 0;
@@ -336,7 +336,7 @@ export class ReceiverClient extends EventEmitter {
       return;
     }
 
-    if (command === 'NLAENT') {
+    if (command === 'NLAENT' || command === 'OSDENTER') {
       const item = folder.items[this.mockCursor];
       if (item) {
         if (item.type === 'folder') {
