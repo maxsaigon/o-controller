@@ -4,7 +4,7 @@ import { CommandBar } from '../components/CommandBar';
 import { InputSelector } from '../components/InputSelector';
 import { NowPlaying } from '../components/NowPlaying';
 import { PlaybackControls } from '../components/PlaybackControls';
-import { PresetStrip } from '../components/PresetStrip';
+import { NetList } from '../components/NetList';
 import { ServiceSettings } from '../components/ServiceSettings';
 import { StatusHeader } from '../components/StatusHeader';
 import { VolumeControl } from '../components/VolumeControl';
@@ -18,7 +18,7 @@ export function DesktopShell() {
   const serviceUrl = serviceManager.status?.url || 'http://localhost:8787';
 
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [activePanel, setActivePanel] = useState<'input' | 'volume' | 'presets' | null>(null);
+  const [activePanel, setActivePanel] = useState<'input' | 'volume' | 'list' | null>(null);
   const [shortcutStatus, setShortcutStatus] = useState<ShortcutStatus[]>(() => {
     return SHORTCUTS.map((shortcut) => ({ ...shortcut, registered: false, error: null }));
   });
@@ -144,8 +144,12 @@ export function DesktopShell() {
                 />
               ) : null}
 
-              {activePanel === 'presets' ? (
-                <PresetStrip presets={presets} pendingCommand={api.pendingCommand} disabled={!receiverAvailable} onRun={runPreset} />
+              {activePanel === 'list' ? (
+                <NetList
+                  state={state}
+                  pendingCommand={api.pendingCommand}
+                  command={api.command}
+                />
               ) : null}
 
               <CommandBar
@@ -158,7 +162,7 @@ export function DesktopShell() {
                   setSettingsOpen(true);
                   setActivePanel(null);
                 }}
-                onOpenPresets={() => setActivePanel(activePanel === 'presets' ? null : 'presets')}
+                onOpenList={() => setActivePanel(activePanel === 'list' ? null : 'list')}
               />
             </div>
           </>
