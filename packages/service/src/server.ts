@@ -243,8 +243,25 @@ store.subscribe((state) => {
     store.resetNowPlaying();
     triggerCoverArtResolution('');
     scheduleMetadataRefresh(1000);
+
+    // Reset DLNA queue state
+    isDlnaMode = false;
+    playQueue = [];
+    playQueueIndex = -1;
+    if (mockEndTimer) {
+      clearTimeout(mockEndTimer);
+      mockEndTimer = undefined;
+    }
   } else if (state.playback !== lastPlayback && state.playback === 'playing') {
     scheduleMetadataRefresh(1000);
+  }
+
+  // Auto-advance to next track on natural transition to stopped
+  if (isDlnaMode && state.playback === 'stopped' && lastPlayback === 'playing') {
+    if (!userStopped) {
+      app.log.info('DLNA track ended naturally, auto-playing next track');
+      void playNextDlnaTrack();
+    }
   }
 
   if (state.nowPlaying.title !== lastTitle) {

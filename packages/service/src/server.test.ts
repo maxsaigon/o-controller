@@ -499,3 +499,39 @@ describe('DLNA Intercept Playback Commands', () => {
     assert.equal(state.nowPlaying.title, 'Track 1');
   });
 });
+
+describe('DLNA Autoplay End Transition', () => {
+  it('should play next track when playback transitions to stopped naturally', async () => {
+    // Start track 1 in DLNA mode
+    await app.inject({
+      method: 'POST',
+      url: '/dlna/play',
+      payload: {
+        resourceUrl: 'http://example.com/1.mp3',
+        title: 'Track 1',
+        playlist: [
+          { resourceUrl: 'http://example.com/1.mp3', title: 'Track 1' },
+          { resourceUrl: 'http://example.com/2.mp3', title: 'Track 2' },
+        ]
+      }
+    });
+
+    // Assert it is currently playing track 1
+    let stateRes = await app.inject({ method: 'GET', url: '/state' });
+    let state = JSON.parse(stateRes.payload);
+    assert.equal(state.nowPlaying.title, 'Track 1');
+    assert.equal(state.playback, 'playing');
+
+    // Dispatch 'stopped' to simulate song ending naturally (using store directly)
+    store.reduce({ command: 'NST', rawPayload: 'S--' });
+
+    // Wait a tick for the async store subscriber to process and trigger playNextDlnaTrack
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Assert it auto-played track 2
+    stateRes = await app.inject({ method: 'GET', url: '/state' });
+    state = JSON.parse(stateRes.payload);
+    assert.equal(state.nowPlaying.title, 'Track 2');
+    assert.equal(state.playback, 'playing');
+  });
+});
