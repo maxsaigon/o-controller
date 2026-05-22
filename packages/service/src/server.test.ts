@@ -502,6 +502,7 @@ describe('DLNA Intercept Playback Commands', () => {
 
 describe('DLNA Autoplay End Transition', () => {
   it('should play next track when playback transitions to stopped naturally', async () => {
+    store.setConnected(true);
     // Start track 1 in DLNA mode
     await app.inject({
       method: 'POST',
