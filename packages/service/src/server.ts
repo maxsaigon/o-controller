@@ -448,8 +448,57 @@ const playbackSchema = z.object({
   action: z.enum(['play', 'pause', 'stop', 'next', 'previous'] as const),
 });
 
+async function playNextDlnaTrack() {
+  if (playQueueIndex + 1 < playQueue.length) {
+    playQueueIndex++;
+    const track = playQueue[playQueueIndex];
+    app.log.info({ title: track.title, index: playQueueIndex }, 'Playing next DLNA track');
+    await playDlnaTrackInternal(track, app.log);
+  } else {
+    app.log.info('End of playlist, stopping DLNA autoplay');
+    isDlnaMode = false;
+    if (!config.MOCK_MODE) {
+      await receiver.send(COMMANDS.NET_STOP);
+    } else {
+      store.reduce({ command: 'NST', rawPayload: 'S--' });
+    }
+  }
+}
+
+async function playPrevDlnaTrack() {
+  if (playQueueIndex - 1 >= 0) {
+    playQueueIndex--;
+    const track = playQueue[playQueueIndex];
+    app.log.info({ title: track.title, index: playQueueIndex }, 'Playing previous DLNA track');
+    await playDlnaTrackInternal(track, app.log);
+  }
+}
+
 app.post('/commands/playback', async (request, reply) => {
   const body = playbackSchema.parse(request.body);
+
+  if (body.action === 'stop') {
+    userStopped = true;
+    if (mockEndTimer) {
+      clearTimeout(mockEndTimer);
+      mockEndTimer = undefined;
+    }
+  } else if (body.action === 'pause') {
+    if (mockEndTimer) {
+      clearTimeout(mockEndTimer);
+      mockEndTimer = undefined;
+    }
+  }
+
+  if (isDlnaMode && playQueue.length > 0) {
+    if (body.action === 'next') {
+      await playNextDlnaTrack();
+      return { success: true, command: 'DLNA_NEXT' };
+    } else if (body.action === 'previous') {
+      await playPrevDlnaTrack();
+      return { success: true, command: 'DLNA_PREV' };
+    }
+  }
 
   const cmdMap: Record<PlaybackCommand, string> = {
     play: COMMANDS.NET_PLAY,

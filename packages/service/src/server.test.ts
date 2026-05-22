@@ -458,3 +458,44 @@ describe('POST /dlna/play schema', () => {
   });
 });
 
+describe('DLNA Intercept Playback Commands', () => {
+  it('should intercept next command and play next track', async () => {
+    // Setup DLNA Mode
+    await app.inject({
+      method: 'POST',
+      url: '/dlna/play',
+      payload: {
+        resourceUrl: 'http://example.com/1.mp3',
+        title: 'Track 1',
+        playlist: [
+          { resourceUrl: 'http://example.com/1.mp3', title: 'Track 1' },
+          { resourceUrl: 'http://example.com/2.mp3', title: 'Track 2' },
+        ]
+      }
+    });
+
+    // Send next command
+    const res = await app.inject({
+      method: 'POST',
+      url: '/commands/playback',
+      payload: { action: 'next' },
+    });
+    assert.equal(res.statusCode, 200);
+    const stateRes = await app.inject({ method: 'GET', url: '/state' });
+    const state = JSON.parse(stateRes.payload);
+    assert.equal(state.nowPlaying.title, 'Track 2');
+  });
+
+  it('should intercept previous command and play previous track', async () => {
+    // Send previous command (should go back to track 1)
+    const res = await app.inject({
+      method: 'POST',
+      url: '/commands/playback',
+      payload: { action: 'previous' },
+    });
+    assert.equal(res.statusCode, 200);
+    const stateRes = await app.inject({ method: 'GET', url: '/state' });
+    const state = JSON.parse(stateRes.payload);
+    assert.equal(state.nowPlaying.title, 'Track 1');
+  });
+});
