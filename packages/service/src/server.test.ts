@@ -22,6 +22,8 @@ before(async () => {
 });
 
 after(async () => {
+  const { dlnaDiscovery } = await import('./server.js');
+  dlnaDiscovery.stop();
   await app.close();
 });
 
@@ -433,3 +435,26 @@ describe('stripOnkyoHeaders', () => {
     assert.equal(result.toString(), 'NoNewlinesHere');
   });
 });
+
+describe('POST /dlna/play schema', () => {
+  it('should accept resourceUrl with a playlist queue', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/dlna/play',
+      payload: {
+        resourceUrl: 'http://192.168.1.100/track1.mp3',
+        title: 'Track 1',
+        artist: 'Artist 1',
+        mimeType: 'audio/mpeg',
+        playlist: [
+          { resourceUrl: 'http://192.168.1.100/track1.mp3', title: 'Track 1', artist: 'Artist 1', mimeType: 'audio/mpeg' },
+          { resourceUrl: 'http://192.168.1.100/track2.mp3', title: 'Track 2', artist: 'Artist 2', mimeType: 'audio/mpeg' }
+        ]
+      }
+    });
+    assert.equal(res.statusCode, 200);
+    const body = JSON.parse(res.payload);
+    assert.equal(body.success, true);
+  });
+});
+

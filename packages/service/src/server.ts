@@ -20,6 +20,7 @@ import { loadConfig } from './config.js';
 import { StateStore } from './state-store.js';
 import { ReceiverClient } from './receiver-client.js';
 import { findPreset, loadPresets } from './presets.js';
+import { DLNADiscovery, browseAll, discoverReceiverAVTransport } from '@o-control/upnp';
 
 const config = loadConfig();
 
@@ -73,6 +74,19 @@ let lastPlayback = store.getState().playback;
 let lastInput = store.getState().input;
 let hasQueriedCore = false;
 let hasScheduledInitialMetadataRefresh = false;
+
+interface PlayQueueItem {
+  resourceUrl: string;
+  title?: string;
+  artist?: string;
+  mimeType?: string;
+}
+
+let playQueue: PlayQueueItem[] = [];
+let playQueueIndex = -1;
+let isDlnaMode = false;
+let userStopped = false;
+let mockEndTimer: ReturnType<typeof setTimeout> | undefined;
 
 // Wire receiver events to state store
 receiver.on('packet', (packet: ParsedPacket) => {
@@ -646,5 +660,211 @@ export function stripOnkyoHeaders(buffer: Buffer): Buffer {
   return buffer;
 }
 
+// ── DLNA Discovery & Browse ───────────────────────────────────
+const dlnaDiscovery = new DLNADiscovery({ scanInterval: 30_000 });
+
+dlnaDiscovery.on('serverFound', (server) => {
+  app.log.info({ name: server.friendlyName, host: server.host }, 'DLNA server discovered');
+});
+
+// Start discovery when server starts
+dlnaDiscovery.start();
+
+// ── Receiver AVTransport Discovery ────────────────────────────
+let cachedAVTransportUrl: string | null = null;
+
+async function getReceiverAVTransportUrl(): Promise<string | null> {
+  if (cachedAVTransportUrl) return cachedAVTransportUrl;
+  const url = await discoverReceiverAVTransport(config.ONKYO_HOST);
+  if (url) {
+    cachedAVTransportUrl = url;
+    app.log.info({ url }, 'Discovered receiver AVTransport control URL');
+  }
+  return url;
+}
+
+// Eagerly discover on startup
+void getReceiverAVTransportUrl();
+
+app.get('/dlna/servers', async (_request, reply) => {
+  const servers = dlnaDiscovery.getServers().map(s => ({
+    id: s.id,
+    friendlyName: s.friendlyName,
+    host: s.host,
+  }));
+  return { servers };
+});
+
+app.post('/dlna/scan', async (_request, reply) => {
+  dlnaDiscovery.scan();
+  return { success: true, message: 'SSDP scan triggered' };
+});
+
+const dlnaBrowseSchema = z.object({
+  serverId: z.string(),
+  objectId: z.string().default('0'),
+});
+
+app.post('/dlna/browse', async (request, reply) => {
+  const body = dlnaBrowseSchema.parse(request.body);
+  const server = dlnaDiscovery.getServer(body.serverId);
+
+  if (!server) {
+    reply.code(404);
+    return { error: 'Server not found. Try /dlna/scan first.' };
+  }
+
+  try {
+    const result = await browseAll(server.contentDirectoryUrl, body.objectId);
+    return {
+      title: body.objectId === '0' ? server.friendlyName : undefined,
+      items: result.items,
+      totalMatches: result.totalMatches,
+    };
+  } catch (err) {
+    app.log.error(err, 'DLNA browse failed');
+    reply.code(502);
+    return { error: 'Failed to browse DLNA server' };
+  }
+});
+
+function escapeXml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+const dlnaPlaySchema = z.object({
+  resourceUrl: z.string().url(),
+  title: z.string().optional(),
+  artist: z.string().optional(),
+  mimeType: z.string().optional(),
+  playlist: z.array(z.object({
+    resourceUrl: z.string().url(),
+    title: z.string().optional(),
+    artist: z.string().optional(),
+    mimeType: z.string().optional(),
+  })).optional(),
+});
+
+app.post('/dlna/play', async (request, reply) => {
+  const body = dlnaPlaySchema.parse(request.body);
+
+  if (config.MOCK_MODE) {
+    app.log.info({ url: body.resourceUrl }, 'Mock DLNA playback started');
+    // Update store state to simulate playing track
+    store.reduce({ command: 'NTI', rawPayload: body.title || 'Mock Title' });
+    store.reduce({ command: 'NAT', rawPayload: body.artist || 'Mock Artist' });
+    store.reduce({ command: 'NST', rawPayload: 'P--' }); // playing status
+    return { success: true, mock: true };
+  }
+
+  // Switch input to net if not already on it
+  const currentInput = store.getState().input;
+  if (currentInput !== 'net' && currentInput !== 'usb') {
+    const netHex = INPUT_CODES['net'];
+    const netCmd = buildInputCommand(netHex);
+    app.log.info({ netCmd, currentInput }, 'Switching receiver input to NET for DLNA playback');
+    await receiver.send(netCmd);
+    // Wait for the receiver to switch inputs
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+
+  // Escape metadata fields for DIDL-Lite XML
+  const titleXml = body.title ? `<dc:title>${escapeXml(body.title)}</dc:title>` : '';
+  const artistXml = body.artist ? `<upnp:artist>${escapeXml(body.artist)}</upnp:artist>` : '';
+  const mimeType = body.mimeType ?? 'audio/mpeg';
+  const escapedUrl = escapeXml(body.resourceUrl);
+  const escapedMime = escapeXml(mimeType);
+
+  const didl = `<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1">${titleXml}${artistXml}<upnp:class>object.item.audioItem.musicTrack</upnp:class><res protocolInfo="http-get:*:${escapedMime}:*">${escapedUrl}</res></item></DIDL-Lite>`;
+
+  // Escape for SOAP
+  const escapedDidl = escapeXml(didl);
+
+  // Discover (or use cached) receiver AVTransport control URL
+  const avTransportUrl = await getReceiverAVTransportUrl();
+  if (!avTransportUrl) {
+    app.log.error('Could not discover receiver AVTransport URL');
+    reply.code(502);
+    return {
+      error: 'Failed to discover receiver AVTransport service',
+      detail: `No UPnP device description found on ${config.ONKYO_HOST}. Is the receiver powered on?`,
+    };
+  }
+
+  const setURIBody = `<?xml version="1.0" encoding="utf-8"?>
+<s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+  <s:Body>
+    <u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+      <InstanceID>0</InstanceID>
+      <CurrentURI>${escapedUrl}</CurrentURI>
+      <CurrentURIMetaData>${escapedDidl}</CurrentURIMetaData>
+    </u:SetAVTransportURI>
+  </s:Body>
+</s:Envelope>`;
+
+  const playBody = `<?xml version="1.0" encoding="utf-8"?>
+<s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+  <s:Body>
+    <u:Play xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+      <InstanceID>0</InstanceID>
+      <Speed>1</Speed>
+    </u:Play>
+  </s:Body>
+</s:Envelope>`;
+
+  try {
+    app.log.info({ avTransportUrl }, 'Sending SetAVTransportURI');
+    const setRes = await fetch(avTransportUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/xml; charset="utf-8"',
+        'SOAPAction': '"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI"',
+      },
+      body: setURIBody,
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!setRes.ok) {
+      const text = await setRes.text().catch(() => '');
+      app.log.error({ status: setRes.status, body: text.substring(0, 200) }, 'SetAVTransportURI failed');
+      reply.code(502);
+      return { error: 'SetAVTransportURI failed', detail: `Status ${setRes.status}: ${text.substring(0, 200)}` };
+    }
+
+    app.log.info({ avTransportUrl }, 'Sending Play');
+    const playRes = await fetch(avTransportUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/xml; charset="utf-8"',
+        'SOAPAction': '"urn:schemas-upnp-org:service:AVTransport:1#Play"',
+      },
+      body: playBody,
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!playRes.ok) {
+      const text = await playRes.text().catch(() => '');
+      app.log.error({ status: playRes.status, body: text.substring(0, 200) }, 'Play failed');
+      reply.code(502);
+      return { error: 'Play command failed', detail: `Status ${playRes.status}: ${text.substring(0, 200)}` };
+    }
+
+    app.log.info({ url: body.resourceUrl, avTransport: avTransportUrl }, 'DLNA playback started');
+    return { success: true, avTransportUrl };
+  } catch (err) {
+    // If the cached URL failed, invalidate cache and retry discovery next time
+    cachedAVTransportUrl = null;
+    const msg = err instanceof Error ? err.message : String(err);
+    app.log.error({ err: msg, avTransportUrl }, 'AVTransport request failed');
+    reply.code(502);
+    return { error: 'AVTransport request failed', detail: msg };
+  }
+});
+
 // Export for testing
-export { app, store, receiver };
+export { app, store, receiver, dlnaDiscovery };
