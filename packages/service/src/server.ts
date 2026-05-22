@@ -750,46 +750,36 @@ const dlnaPlaySchema = z.object({
   })).optional(),
 });
 
-app.post('/dlna/play', async (request, reply) => {
-  const body = dlnaPlaySchema.parse(request.body);
-
+async function playDlnaTrackInternal(track: PlayQueueItem, log: typeof app.log): Promise<{ success: boolean; avTransportUrl?: string; error?: string; detail?: string }> {
   if (config.MOCK_MODE) {
-    app.log.info({ url: body.resourceUrl }, 'Mock DLNA playback started');
-    // Update store state to simulate playing track
-    store.reduce({ command: 'NTI', rawPayload: body.title || 'Mock Title' });
-    store.reduce({ command: 'NAT', rawPayload: body.artist || 'Mock Artist' });
+    log.info({ url: track.resourceUrl }, 'Mock DLNA playback started');
+    store.reduce({ command: 'NTI', rawPayload: track.title || 'Mock Title' });
+    store.reduce({ command: 'NAT', rawPayload: track.artist || 'Mock Artist' });
     store.reduce({ command: 'NST', rawPayload: 'P--' }); // playing status
-    return { success: true, mock: true };
+    return { success: true };
   }
 
-  // Switch input to net if not already on it
   const currentInput = store.getState().input;
   if (currentInput !== 'net' && currentInput !== 'usb') {
     const netHex = INPUT_CODES['net'];
     const netCmd = buildInputCommand(netHex);
-    app.log.info({ netCmd, currentInput }, 'Switching receiver input to NET for DLNA playback');
+    log.info({ netCmd, currentInput }, 'Switching receiver input to NET for DLNA playback');
     await receiver.send(netCmd);
-    // Wait for the receiver to switch inputs
     await new Promise((resolve) => setTimeout(resolve, 1500));
   }
 
-  // Escape metadata fields for DIDL-Lite XML
-  const titleXml = body.title ? `<dc:title>${escapeXml(body.title)}</dc:title>` : '';
-  const artistXml = body.artist ? `<upnp:artist>${escapeXml(body.artist)}</upnp:artist>` : '';
-  const mimeType = body.mimeType ?? 'audio/mpeg';
-  const escapedUrl = escapeXml(body.resourceUrl);
+  const titleXml = track.title ? `<dc:title>${escapeXml(track.title)}</dc:title>` : '';
+  const artistXml = track.artist ? `<upnp:artist>${escapeXml(track.artist)}</upnp:artist>` : '';
+  const mimeType = track.mimeType ?? 'audio/mpeg';
+  const escapedUrl = escapeXml(track.resourceUrl);
   const escapedMime = escapeXml(mimeType);
 
   const didl = `<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1">${titleXml}${artistXml}<upnp:class>object.item.audioItem.musicTrack</upnp:class><res protocolInfo="http-get:*:${escapedMime}:*">${escapedUrl}</res></item></DIDL-Lite>`;
-
-  // Escape for SOAP
   const escapedDidl = escapeXml(didl);
 
-  // Discover (or use cached) receiver AVTransport control URL
   const avTransportUrl = await getReceiverAVTransportUrl();
   if (!avTransportUrl) {
-    app.log.error('Could not discover receiver AVTransport URL');
-    reply.code(502);
+    log.error('Could not discover receiver AVTransport URL');
     return {
       error: 'Failed to discover receiver AVTransport service',
       detail: `No UPnP device description found on ${config.ONKYO_HOST}. Is the receiver powered on?`,
@@ -818,7 +808,7 @@ app.post('/dlna/play', async (request, reply) => {
 </s:Envelope>`;
 
   try {
-    app.log.info({ avTransportUrl }, 'Sending SetAVTransportURI');
+    log.info({ avTransportUrl }, 'Sending SetAVTransportURI');
     const setRes = await fetch(avTransportUrl, {
       method: 'POST',
       headers: {
@@ -831,12 +821,11 @@ app.post('/dlna/play', async (request, reply) => {
 
     if (!setRes.ok) {
       const text = await setRes.text().catch(() => '');
-      app.log.error({ status: setRes.status, body: text.substring(0, 200) }, 'SetAVTransportURI failed');
-      reply.code(502);
+      log.error({ status: setRes.status, body: text.substring(0, 200) }, 'SetAVTransportURI failed');
       return { error: 'SetAVTransportURI failed', detail: `Status ${setRes.status}: ${text.substring(0, 200)}` };
     }
 
-    app.log.info({ avTransportUrl }, 'Sending Play');
+    log.info({ avTransportUrl }, 'Sending Play');
     const playRes = await fetch(avTransportUrl, {
       method: 'POST',
       headers: {
@@ -849,21 +838,54 @@ app.post('/dlna/play', async (request, reply) => {
 
     if (!playRes.ok) {
       const text = await playRes.text().catch(() => '');
-      app.log.error({ status: playRes.status, body: text.substring(0, 200) }, 'Play failed');
-      reply.code(502);
+      log.error({ status: playRes.status, body: text.substring(0, 200) }, 'Play failed');
       return { error: 'Play command failed', detail: `Status ${playRes.status}: ${text.substring(0, 200)}` };
     }
 
-    app.log.info({ url: body.resourceUrl, avTransport: avTransportUrl }, 'DLNA playback started');
+    log.info({ url: track.resourceUrl, avTransport: avTransportUrl }, 'DLNA playback started');
     return { success: true, avTransportUrl };
   } catch (err) {
-    // If the cached URL failed, invalidate cache and retry discovery next time
     cachedAVTransportUrl = null;
     const msg = err instanceof Error ? err.message : String(err);
-    app.log.error({ err: msg, avTransportUrl }, 'AVTransport request failed');
-    reply.code(502);
+    log.error({ err: msg, avTransportUrl }, 'AVTransport request failed');
     return { error: 'AVTransport request failed', detail: msg };
   }
+}
+
+app.post('/dlna/play', async (request, reply) => {
+  const body = dlnaPlaySchema.parse(request.body);
+
+  if (mockEndTimer) {
+    clearTimeout(mockEndTimer);
+    mockEndTimer = undefined;
+  }
+
+  isDlnaMode = true;
+  userStopped = false;
+
+  if (body.playlist && body.playlist.length > 0) {
+    playQueue = body.playlist;
+    playQueueIndex = playQueue.findIndex(track => track.resourceUrl === body.resourceUrl);
+  } else {
+    playQueue = [{ resourceUrl: body.resourceUrl, title: body.title, artist: body.artist, mimeType: body.mimeType }];
+    playQueueIndex = 0;
+  }
+
+  const currentTrack = playQueue[playQueueIndex] || {
+    resourceUrl: body.resourceUrl,
+    title: body.title,
+    artist: body.artist,
+    mimeType: body.mimeType,
+  };
+
+  const res = await playDlnaTrackInternal(currentTrack, app.log);
+
+  if (!res.success) {
+    reply.code(502);
+    return { error: res.error, detail: res.detail };
+  }
+
+  return { success: true, avTransportUrl: res.avTransportUrl };
 });
 
 // Export for testing
