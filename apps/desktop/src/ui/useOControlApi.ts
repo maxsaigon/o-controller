@@ -32,38 +32,70 @@ export function useOControlApi(serviceUrl: string) {
   const [serviceReachable, setServiceReachable] = useState(false);
   const [pendingCommand, setPendingCommand] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const mounted = useRef(true);
+  const mounted = useRef(false);
+  const activeServiceUrl = useRef<string | null>(null);
+  const lifecycleGeneration = useRef(0);
+  const commandGeneration = useRef(0);
   const delayedRefreshTimer = useRef<number | undefined>(undefined);
 
-  const refresh = useCallback(async () => {
-    try {
-      const [nextState, nextPresets] = await Promise.all([
-        readJson<OControlState>(`${serviceUrl}/state`),
-        readJson<PresetDefinition[]>(`${serviceUrl}/presets`).catch(() => []),
-      ]);
-      if (!mounted.current) return;
-      setState(nextState);
-      setPresets(nextPresets);
-      setServiceReachable(true);
-      setError(null);
-    } catch (err) {
-      if (!mounted.current) return;
-      setServiceReachable(false);
-      setError(err instanceof Error ? err.message : 'Service unavailable');
+  const clearDelayedRefresh = useCallback(() => {
+    if (delayedRefreshTimer.current !== undefined) {
+      window.clearTimeout(delayedRefreshTimer.current);
+      delayedRefreshTimer.current = undefined;
     }
-  }, [serviceUrl]);
+  }, []);
+
+  const refreshState = useCallback(
+    async (endpoint: string, isCurrent: () => boolean) => {
+      try {
+        const [nextState, nextPresets] = await Promise.all([
+          readJson<OControlState>(`${endpoint}/state`),
+          readJson<PresetDefinition[]>(`${endpoint}/presets`).catch(() => []),
+        ]);
+        if (!isCurrent()) return;
+        setState(nextState);
+        setPresets(nextPresets);
+        setServiceReachable(true);
+        setError(null);
+      } catch (err) {
+        if (!isCurrent()) return;
+        setServiceReachable(false);
+        setError(err instanceof Error ? err.message : 'Service unavailable');
+      }
+    },
+    [],
+  );
+
+  const refresh = useCallback(async () => {
+    const lifecycle = lifecycleGeneration.current;
+    const endpoint = serviceUrl;
+    await refreshState(endpoint, () => (
+      mounted.current
+      && lifecycleGeneration.current === lifecycle
+      && activeServiceUrl.current === endpoint
+    ));
+  }, [refreshState, serviceUrl]);
 
   useEffect(() => {
+    const lifecycle = lifecycleGeneration.current + 1;
+    lifecycleGeneration.current = lifecycle;
     mounted.current = true;
-    void refresh();
+    activeServiceUrl.current = serviceUrl;
+    void refreshState(serviceUrl, () => (
+      mounted.current
+      && lifecycleGeneration.current === lifecycle
+      && activeServiceUrl.current === serviceUrl
+    ));
+
     return () => {
-      mounted.current = false;
-      if (delayedRefreshTimer.current !== undefined) {
-        window.clearTimeout(delayedRefreshTimer.current);
-        delayedRefreshTimer.current = undefined;
+      if (lifecycleGeneration.current === lifecycle) {
+        mounted.current = false;
+        activeServiceUrl.current = null;
+        commandGeneration.current += 1;
+        clearDelayedRefresh();
       }
     };
-  }, [refresh]);
+  }, [clearDelayedRefresh, refreshState, serviceUrl]);
 
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -71,19 +103,23 @@ export function useOControlApi(serviceUrl: string) {
     let closed = false;
 
     function connect() {
+      if (closed) return;
       try {
         socket = new WebSocket(eventUrl(serviceUrl));
       } catch {
+        if (closed) return;
         setServiceReachable(false);
         return;
       }
 
       socket.addEventListener('open', () => {
+        if (closed) return;
         setServiceReachable(true);
         setError(null);
       });
 
       socket.addEventListener('message', (message) => {
+        if (closed) return;
         try {
           const event = JSON.parse(message.data as string) as OControlEvent;
           if (event.type === 'state.changed') {
@@ -102,6 +138,7 @@ export function useOControlApi(serviceUrl: string) {
       });
 
       socket.addEventListener('error', () => {
+        if (closed) return;
         setServiceReachable(false);
       });
     }
@@ -110,38 +147,56 @@ export function useOControlApi(serviceUrl: string) {
 
     return () => {
       closed = true;
-      if (retryTimer) window.clearTimeout(retryTimer);
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
       socket?.close();
     };
   }, [serviceUrl]);
 
   const command = useCallback(
     async (path: string, body: unknown, label: string): Promise<boolean> => {
+      const lifecycle = lifecycleGeneration.current;
+      const endpoint = serviceUrl;
+      const generation = commandGeneration.current + 1;
+      commandGeneration.current = generation;
+      clearDelayedRefresh();
+
+      const isCurrent = () => (
+        mounted.current
+        && lifecycleGeneration.current === lifecycle
+        && activeServiceUrl.current === endpoint
+        && commandGeneration.current === generation
+      );
+
       setPendingCommand(label);
       setError(null);
       try {
-        await readJson(`${serviceUrl}${path}`, {
+        await readJson(`${endpoint}${path}`, {
           method: 'POST',
           body: JSON.stringify(body),
         });
-        await refresh();
+        if (!isCurrent()) return false;
+        await refreshState(endpoint, isCurrent);
+        if (!isCurrent()) return false;
+
         // Fallback refresh for delayed receiver response
-        if (delayedRefreshTimer.current !== undefined) {
-          window.clearTimeout(delayedRefreshTimer.current);
-        }
         delayedRefreshTimer.current = window.setTimeout(() => {
           delayedRefreshTimer.current = undefined;
-          void refresh();
+          if (isCurrent()) {
+            void refreshState(endpoint, isCurrent);
+          }
         }, 1500);
         return true;
       } catch (err) {
+        if (!isCurrent()) return false;
         setError(err instanceof Error ? err.message : `Command failed: ${label}`);
         return false;
       } finally {
-        setPendingCommand(null);
+        if (isCurrent()) {
+          setPendingCommand(null);
+        }
       }
     },
-    [refresh, serviceUrl],
+    [clearDelayedRefresh, refreshState, serviceUrl],
   );
 
   const connectionLabel = useMemo(() => {

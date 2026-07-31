@@ -37,6 +37,14 @@ function jsonResponse(body: unknown, ok = true): Response {
   } as Response;
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 describe('useOControlApi', () => {
   beforeEach(() => {
     MockWebSocket.instances = [];
@@ -94,6 +102,158 @@ describe('useOControlApi', () => {
     expect(MockWebSocket.instances[1].close).toHaveBeenCalledOnce();
   });
 
+  it('ignores old socket events after switching service URLs', async () => {
+    const { result, rerender, unmount } = renderHook(
+      ({ serviceUrl }) => useOControlApi(serviceUrl),
+      { initialProps: { serviceUrl: 'http://old-service:8787' } },
+    );
+    await waitFor(() => expect(result.current.serviceReachable).toBe(true));
+    const oldSocket = MockWebSocket.instances[0];
+
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(receiverState({ volume: 44 })))
+      .mockResolvedValueOnce(jsonResponse([]));
+    rerender({ serviceUrl: 'http://new-service:8787' });
+    await waitFor(() => expect(result.current.state.volume).toBe(44));
+
+    act(() => oldSocket.emit('error'));
+    expect(result.current.serviceReachable).toBe(true);
+
+    act(() => {
+      oldSocket.emit(
+        'message',
+        JSON.stringify({ type: 'state.changed', state: receiverState({ volume: 99 }) }),
+      );
+    });
+    expect(result.current.state.volume).toBe(44);
+
+    fetchMock
+      .mockRejectedValueOnce(new Error('new endpoint offline'))
+      .mockResolvedValueOnce(jsonResponse([]));
+    await act(async () => result.current.refresh());
+    expect(result.current.serviceReachable).toBe(false);
+    expect(result.current.error).toBe('new endpoint offline');
+
+    act(() => oldSocket.emit('open'));
+    expect(result.current.serviceReachable).toBe(false);
+    expect(result.current.error).toBe('new endpoint offline');
+    unmount();
+  });
+
+  it('does not let an old refresh overwrite a new service URL', async () => {
+    const { result, rerender, unmount } = renderHook(
+      ({ serviceUrl }) => useOControlApi(serviceUrl),
+      { initialProps: { serviceUrl: 'http://old-service:8787' } },
+    );
+    await waitFor(() => expect(result.current.serviceReachable).toBe(true));
+
+    const oldStateResponse = deferred<Response>();
+    fetchMock
+      .mockImplementationOnce(() => oldStateResponse.promise)
+      .mockResolvedValueOnce(jsonResponse([]))
+      .mockResolvedValueOnce(
+        jsonResponse(receiverState({
+          volume: 44,
+          nowPlaying: { ...receiverState().nowPlaying, title: 'New endpoint' },
+        })),
+      )
+      .mockResolvedValueOnce(jsonResponse([]));
+
+    let oldRefreshPromise!: Promise<void>;
+    act(() => {
+      oldRefreshPromise = result.current.refresh();
+    });
+    rerender({ serviceUrl: 'http://new-service:8787' });
+    await waitFor(() => expect(result.current.state.nowPlaying.title).toBe('New endpoint'));
+
+    await act(async () => {
+      oldStateResponse.resolve(
+        jsonResponse(receiverState({
+          volume: 91,
+          nowPlaying: { ...receiverState().nowPlaying, title: 'Old endpoint' },
+        })),
+      );
+      await oldRefreshPromise;
+    });
+
+    expect(result.current.state.nowPlaying.title).toBe('New endpoint');
+    expect(result.current.state.volume).toBe(44);
+    unmount();
+  });
+
+  it('invalidates an in-flight command when the hook unmounts', async () => {
+    const { result, unmount } = renderHook(() => useOControlApi('http://localhost:8787'));
+    await waitFor(() => expect(result.current.serviceReachable).toBe(true));
+
+    const postResponse = deferred<Response>();
+    fetchMock.mockImplementationOnce(() => postResponse.promise);
+    vi.useFakeTimers();
+    let commandPromise!: Promise<boolean>;
+    act(() => {
+      commandPromise = result.current.command('/commands/volume', { value: 22 }, 'volume:set');
+    });
+    const fetchCountBeforeUnmount = fetchMock.mock.calls.length;
+
+    unmount();
+    let succeeded: boolean | undefined;
+    await act(async () => {
+      postResponse.resolve(jsonResponse({ success: true }));
+      succeeded = await commandPromise;
+    });
+
+    expect(succeeded).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(fetchCountBeforeUnmount);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('invalidates an old command when the service URL changes', async () => {
+    const { result, rerender, unmount } = renderHook(
+      ({ serviceUrl }) => useOControlApi(serviceUrl),
+      { initialProps: { serviceUrl: 'http://old-service:8787' } },
+    );
+    await waitFor(() => expect(result.current.serviceReachable).toBe(true));
+
+    const oldPostResponse = deferred<Response>();
+    fetchMock
+      .mockImplementationOnce(() => oldPostResponse.promise)
+      .mockResolvedValueOnce(
+        jsonResponse(receiverState({
+          volume: 44,
+          nowPlaying: { ...receiverState().nowPlaying, title: 'New endpoint' },
+        })),
+      )
+      .mockResolvedValueOnce(jsonResponse([]))
+      .mockResolvedValueOnce(
+        jsonResponse(receiverState({
+          volume: 91,
+          nowPlaying: { ...receiverState().nowPlaying, title: 'Old endpoint' },
+        })),
+      )
+      .mockResolvedValueOnce(jsonResponse([]));
+
+    let oldCommandPromise!: Promise<boolean>;
+    act(() => {
+      oldCommandPromise = result.current.command(
+        '/commands/input',
+        { input: 'net' },
+        'input:net',
+      );
+    });
+    rerender({ serviceUrl: 'http://new-service:8787' });
+    await waitFor(() => expect(result.current.state.nowPlaying.title).toBe('New endpoint'));
+
+    let succeeded: boolean | undefined;
+    await act(async () => {
+      oldPostResponse.resolve(jsonResponse({ success: true }));
+      succeeded = await oldCommandPromise;
+    });
+
+    expect(succeeded).toBe(false);
+    expect(result.current.state.nowPlaying.title).toBe('New endpoint');
+    expect(result.current.state.volume).toBe(44);
+    unmount();
+  });
+
   it('closes the socket and clears delayed command refresh on unmount', async () => {
     const { result, unmount } = renderHook(() => useOControlApi('http://localhost:8787'));
     await waitFor(() => expect(result.current.serviceReachable).toBe(true));
@@ -106,14 +266,95 @@ describe('useOControlApi', () => {
     await act(async () => {
       await result.current.command('/commands/volume', { value: 22 }, 'volume:set');
     });
-    expect(fetchMock).toHaveBeenCalledTimes(5);
+    const commandPostCalls = fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST');
+    expect(commandPostCalls).toHaveLength(1);
+    expect(String(commandPostCalls[0][0])).toBe('http://localhost:8787/commands/volume');
+    const fetchCountBeforeUnmount = fetchMock.mock.calls.length;
 
     unmount();
     await act(async () => vi.runAllTimersAsync());
 
-    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(fetchMock).toHaveBeenCalledTimes(fetchCountBeforeUnmount);
     expect(MockWebSocket.instances).toHaveLength(1);
     expect(MockWebSocket.instances[0].close).toHaveBeenCalledOnce();
+  });
+
+  it('does not let a superseded command clear the newer pending command', async () => {
+    const { result, unmount } = renderHook(() => useOControlApi('http://localhost:8787'));
+    await waitFor(() => expect(result.current.serviceReachable).toBe(true));
+
+    const olderPostResponse = deferred<Response>();
+    const newerPostResponse = deferred<Response>();
+    fetchMock
+      .mockImplementationOnce(() => olderPostResponse.promise)
+      .mockImplementationOnce(() => newerPostResponse.promise)
+      .mockResolvedValueOnce(jsonResponse(receiverState()))
+      .mockResolvedValueOnce(jsonResponse([]));
+    vi.useFakeTimers();
+
+    let olderCommandPromise!: Promise<boolean>;
+    act(() => {
+      olderCommandPromise = result.current.command(
+        '/commands/input',
+        { input: 'net' },
+        'input:net',
+      );
+    });
+    let newerCommandPromise!: Promise<boolean>;
+    act(() => {
+      newerCommandPromise = result.current.command(
+        '/commands/input',
+        { input: 'usb' },
+        'input:usb',
+      );
+    });
+    expect(result.current.pendingCommand).toBe('input:usb');
+
+    let olderSucceeded: boolean | undefined;
+    await act(async () => {
+      olderPostResponse.resolve(jsonResponse({ success: true }));
+      olderSucceeded = await olderCommandPromise;
+    });
+    expect(olderSucceeded).toBe(false);
+    expect(result.current.pendingCommand).toBe('input:usb');
+
+    await act(async () => {
+      newerPostResponse.resolve(jsonResponse('Newer command failed', false));
+      await newerCommandPromise;
+    });
+    expect(result.current.pendingCommand).toBeNull();
+    expect(result.current.error).toBe('Newer command failed');
+    unmount();
+  });
+
+  it('cancels an old fallback refresh when a newer command fails', async () => {
+    const { result, unmount } = renderHook(() => useOControlApi('http://localhost:8787'));
+    await waitFor(() => expect(result.current.serviceReachable).toBe(true));
+
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ success: true }))
+      .mockResolvedValueOnce(jsonResponse(receiverState()))
+      .mockResolvedValueOnce(jsonResponse([]))
+      .mockResolvedValueOnce(jsonResponse('Newer command failed', false))
+      .mockResolvedValueOnce(jsonResponse(receiverState({ volume: 99 })))
+      .mockResolvedValueOnce(jsonResponse([]));
+    vi.useFakeTimers();
+
+    await act(async () => {
+      await result.current.command('/commands/volume', { value: 22 }, 'volume:set');
+    });
+    expect(vi.getTimerCount()).toBe(1);
+
+    await act(async () => {
+      await result.current.command('/commands/volume', { value: 23 }, 'volume:set');
+    });
+    expect(result.current.error).toBe('Newer command failed');
+    const fetchCountBeforeAdvance = fetchMock.mock.calls.length;
+
+    await act(async () => vi.advanceTimersByTimeAsync(1500));
+    expect(fetchMock).toHaveBeenCalledTimes(fetchCountBeforeAdvance);
+    expect(result.current.error).toBe('Newer command failed');
+    unmount();
   });
 
   it('clears pending after failure and allows a successful retry', async () => {
