@@ -81,6 +81,10 @@ export function useOControlApi(serviceUrl: string) {
     lifecycleGeneration.current = lifecycle;
     mounted.current = true;
     activeServiceUrl.current = serviceUrl;
+    setState(EMPTY_STATE);
+    setPresets([]);
+    setServiceReachable(false);
+    setError(null);
     setPendingCommand(null);
     void refreshState(serviceUrl, () => (
       mounted.current
@@ -115,7 +119,6 @@ export function useOControlApi(serviceUrl: string) {
 
       socket.addEventListener('open', () => {
         if (closed) return;
-        setServiceReachable(true);
         setError(null);
       });
 

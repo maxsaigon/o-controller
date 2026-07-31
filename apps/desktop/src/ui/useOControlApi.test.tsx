@@ -76,6 +76,51 @@ describe('useOControlApi', () => {
     unmount();
   });
 
+  it('gates a replacement endpoint until its state is confirmed', async () => {
+    fetchMock.mockReset();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(receiverState({ volume: 22 })))
+      .mockResolvedValueOnce(jsonResponse([
+        { id: 'endpoint-a', name: 'Endpoint A', description: '', steps: [] },
+      ]));
+
+    const { result, rerender, unmount } = renderHook(
+      ({ serviceUrl }) => useOControlApi(serviceUrl),
+      { initialProps: { serviceUrl: 'http://endpoint-a:8787' } },
+    );
+    await waitFor(() => expect(result.current.presets.map(({ id }) => id)).toEqual(['endpoint-a']));
+    expect(result.current.state.connected).toBe(true);
+    expect(result.current.serviceReachable).toBe(true);
+
+    act(() => MockWebSocket.instances[0].emit('message', 'malformed'));
+    expect(result.current.error).toBe('Received malformed event from service');
+
+    const endpointBState = deferred<Response>();
+    fetchMock
+      .mockImplementationOnce(() => endpointBState.promise)
+      .mockResolvedValueOnce(jsonResponse([
+        { id: 'endpoint-b', name: 'Endpoint B', description: '', steps: [] },
+      ]));
+    rerender({ serviceUrl: 'http://endpoint-b:8787' });
+
+    expect(result.current.state.connected).toBe(false);
+    expect(result.current.presets).toEqual([]);
+    expect(result.current.serviceReachable).toBe(false);
+    expect(result.current.error).toBeNull();
+    expect(result.current.pendingCommand).toBeNull();
+
+    act(() => MockWebSocket.instances[1].emit('open'));
+    expect(result.current.state.connected).toBe(false);
+    expect(result.current.serviceReachable).toBe(false);
+
+    endpointBState.resolve(jsonResponse(receiverState({ volume: 44 })));
+    await waitFor(() => expect(result.current.state.volume).toBe(44));
+    expect(result.current.state.connected).toBe(true);
+    expect(result.current.presets.map(({ id }) => id)).toEqual(['endpoint-b']);
+    expect(result.current.serviceReachable).toBe(true);
+    unmount();
+  });
+
   it('applies WebSocket state and reconnects 1800ms after an unexpected close', async () => {
     const { result, unmount } = renderHook(() => useOControlApi('http://localhost:8787'));
     await waitFor(() => expect(result.current.serviceReachable).toBe(true));
