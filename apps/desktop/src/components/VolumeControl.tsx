@@ -8,7 +8,7 @@ type Props = {
   pending: boolean;
   onStepDown: () => void;
   onStepUp: () => void;
-  onCommit: (volume: number) => void;
+  onCommit: (volume: number) => Promise<boolean | void>;
   onMute: () => void;
 };
 
@@ -21,10 +21,14 @@ export function VolumeControl({ volume, muted, disabled, pending, onStepDown, on
     lastCommitted.current = volume;
   }, [volume]);
 
-  const handleCommit = () => {
-    if (draft !== lastCommitted.current) {
-      lastCommitted.current = draft;
-      onCommit(draft);
+  const handleCommit = async () => {
+    if (draft === lastCommitted.current) return;
+    const requestedVolume = draft;
+    const succeeded = await onCommit(requestedVolume);
+    if (succeeded === false) {
+      setDraft(lastCommitted.current);
+    } else {
+      lastCommitted.current = requestedVolume;
     }
   };
 
@@ -47,10 +51,10 @@ export function VolumeControl({ volume, muted, disabled, pending, onStepDown, on
           value={draft}
           disabled={disabled}
           onChange={(event) => setDraft(Number(event.currentTarget.value))}
-          onPointerUp={handleCommit}
-          onBlur={handleCommit}
+          onPointerUp={() => void handleCommit()}
+          onBlur={() => void handleCommit()}
           onKeyUp={(event) => {
-            if (event.key === 'Enter') handleCommit();
+            if (event.key === 'Enter') void handleCommit();
           }}
         />
         <button className="square-button" type="button" title="Volume up" disabled={disabled || pending} onClick={onStepUp}>

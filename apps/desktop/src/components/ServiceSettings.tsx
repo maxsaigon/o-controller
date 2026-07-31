@@ -1,4 +1,4 @@
-import { ArrowLeft, RotateCw, Plus, Search, CheckCircle, XCircle, Trash2, Edit2, Play } from 'lucide-react';
+import { ArrowLeft, RotateCw, Plus, Search, CheckCircle, XCircle, Trash2, Edit2, Play, ChevronRight } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { useServiceManager, ServiceConfig, ReceiverDevice, TestConnectionResult } from '../ui/useServiceManager';
@@ -9,9 +9,10 @@ type Props = {
   error: string | null;
   onBack: () => void;
   onTest: () => void;
+  onOpenInput: () => void;
 };
 
-export function ServiceSettings({ serviceManager, serviceReachable, error, onBack, onTest }: Props) {
+export function ServiceSettings({ serviceManager, serviceReachable, error, onBack, onTest, onOpenInput }: Props) {
   const [draft, setDraft] = useState<ServiceConfig>({ serviceMode: 'local' });
   const [isScanning, setIsScanning] = useState(false);
   const [discoveredDevices, setDiscoveredDevices] = useState<ReceiverDevice[]>([]);
@@ -115,6 +116,14 @@ export function ServiceSettings({ serviceManager, serviceReachable, error, onBac
           {serviceReachable ? 'Service online' : 'Service offline'}
         </span>
       </div>
+
+      <button className="settings-link" type="button" onClick={onOpenInput}>
+        <span>
+          <strong>Input source</strong>
+          <small>Choose CD, Network, USB, Bluetooth, Line, or Tuner</small>
+        </span>
+        <ChevronRight size={16} />
+      </button>
 
       <div className="settings-section">
         <div className="section-header">

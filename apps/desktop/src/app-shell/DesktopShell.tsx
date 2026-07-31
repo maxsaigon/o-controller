@@ -50,7 +50,7 @@ export function DesktopShell() {
   }
 
   async function setVolume(value: number | 'up' | 'down') {
-    await api.command('/commands/volume', { value }, typeof value === 'number' ? 'volume:set' : `volume:${value}`);
+    return api.command('/commands/volume', { value }, typeof value === 'number' ? 'volume:set' : `volume:${value}`);
   }
 
   async function setInput(input: InputId) {
@@ -100,6 +100,10 @@ export function DesktopShell() {
             error={serviceManager.status?.error || api.error}
             onBack={() => setSettingsOpen(false)}
             onTest={api.refresh}
+            onOpenInput={() => {
+              setSettingsOpen(false);
+              setActivePanel('input');
+            }}
           />
         ) : (
           <>
@@ -147,22 +151,34 @@ export function DesktopShell() {
                   serviceUrl={serviceUrl}
                 />
               ) : null}
-
-              <CommandBar
-                state={state}
-                receiverAvailable={receiverAvailable}
-                activePanel={activePanel}
-                onOpenInput={() => setActivePanel(activePanel === 'input' ? null : 'input')}
-                onOpenVolume={() => setActivePanel(activePanel === 'volume' ? null : 'volume')}
-                onOpenSettings={() => {
-                  setSettingsOpen(true);
-                  setActivePanel(null);
-                }}
-                onOpenList={() => setActivePanel(activePanel === 'list' ? null : 'list')}
-              />
             </div>
           </>
         )}
+
+        <div className="rail-dock">
+          <CommandBar
+            state={state}
+            receiverAvailable={receiverAvailable}
+            activePanel={activePanel}
+            settingsOpen={settingsOpen}
+            onOpenRemote={() => {
+              setSettingsOpen(false);
+              setActivePanel(null);
+            }}
+            onOpenVolume={() => {
+              setSettingsOpen(false);
+              setActivePanel(activePanel === 'volume' ? null : 'volume');
+            }}
+            onOpenSettings={() => {
+              setSettingsOpen(true);
+              setActivePanel(null);
+            }}
+            onOpenList={() => {
+              setSettingsOpen(false);
+              setActivePanel(activePanel === 'list' ? null : 'list');
+            }}
+          />
+        </div>
       </section>
     </main>
   );
