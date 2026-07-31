@@ -1,7 +1,12 @@
 import { DEFAULT_STATE } from '@o-control/shared';
 import type { OControlState } from '@o-control/shared';
 
-export function receiverState(overrides: Partial<OControlState> = {}): OControlState {
+export type ReceiverStateOverrides = Omit<Partial<OControlState>, 'nowPlaying' | 'netList'> & {
+  nowPlaying?: Partial<OControlState['nowPlaying']>;
+  netList?: Partial<OControlState['netList']>;
+};
+
+export function receiverState(overrides: ReceiverStateOverrides = {}): OControlState {
   return {
     ...DEFAULT_STATE,
     connected: true,
@@ -26,6 +31,7 @@ export function receiverState(overrides: Partial<OControlState> = {}): OControlS
     netList: {
       ...DEFAULT_STATE.netList,
       ...overrides.netList,
+      items: (overrides.netList?.items ?? DEFAULT_STATE.netList.items).map((item) => ({ ...item })),
     },
   };
 }
