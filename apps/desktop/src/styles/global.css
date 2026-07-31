@@ -90,8 +90,8 @@ p {
   gap: 10px;
   min-height: 62px;
   padding: 14px 17px;
-  border-bottom: 1px solid rgba(215, 217, 222, 0.9);
-  background: rgba(255, 255, 255, 0.72);
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.82);
 }
 
 .header-center {
@@ -144,7 +144,7 @@ p {
   min-height: 34px;
   border: 1px solid var(--border);
   border-radius: 9px;
-  color: var(--text);
+  color: #3f454c;
   background: var(--surface-muted);
   cursor: pointer;
 }
@@ -163,7 +163,7 @@ p {
 .primary-button:hover,
 .preset-row button:hover,
 .mute-toggle:hover {
-  color: var(--text);
+  color: #3f454c;
   background: #e4e7eb;
 }
 
@@ -209,12 +209,12 @@ button:disabled {
 
 .status-dot.connected {
   color: #27a653;
-  box-shadow: 0 0 0 3px rgba(39, 166, 83, 0.16);
+  box-shadow: 0 0 0 3px rgba(39, 166, 83, 0.11);
 }
 
 .status-dot.offline {
   color: #d74848;
-  box-shadow: 0 0 0 3px rgba(215, 72, 72, 0.16);
+  box-shadow: 0 0 0 3px rgba(215, 72, 72, 0.11);
 }
 
 .status-header > .status-dot.connected {
@@ -258,10 +258,8 @@ button:disabled {
   aspect-ratio: 1;
   border: 1px solid var(--border);
   border-radius: 18px;
-  background:
-    linear-gradient(135deg, rgba(22, 119, 232, 0.14), transparent 46%),
-    linear-gradient(315deg, rgba(155, 164, 176, 0.2), transparent 54%),
-    #f0f2f5;
+  color: #54708e;
+  background: linear-gradient(145deg, #edf2f6, #c8d2dc);
 }
 
 .panel-active .artwork-placeholder {
@@ -391,8 +389,8 @@ button:disabled {
 
 .rail-dock {
   align-self: end;
-  border-top: 1px solid rgba(215, 217, 222, 0.9);
-  background: rgba(255, 255, 255, 0.72);
+  border-top: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.9);
 }
 
 .command-rail {
@@ -552,7 +550,7 @@ button:disabled {
   min-height: 42px;
   padding: 0 8px;
   border: 1px solid var(--border);
-  color: var(--text);
+  color: #3f454c;
   background: var(--surface-raised);
   font-size: 12px;
   font-weight: 560;
@@ -568,7 +566,7 @@ button:disabled {
   padding: 9px 10px;
   border: 1px solid rgba(215, 72, 72, 0.28);
   border-radius: 9px;
-  color: #9f2929;
+  color: #b42318;
   background: #fff1f0;
   font-size: 12px;
   line-height: 1.35;
@@ -918,9 +916,8 @@ kbd {
 
 /* Now Playing specific styles */
 .artwork-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  display: grid;
+  place-items: center;
   width: min(var(--artwork-size), 100%);
   margin: 0 auto calc(var(--artwork-gap) - 11px);
   aspect-ratio: 1;
@@ -1310,15 +1307,11 @@ kbd {
 }
 
 /* Keep secondary views on the light palette after their legacy structural rules. */
-.settings-view {
-  color: var(--text);
-  background: var(--surface);
-}
-
+.settings-view,
 .sheet-panel,
 .netlist-panel {
   color: var(--text);
-  background: var(--surface-raised);
+  background: var(--surface);
 }
 
 .settings-header h2,
@@ -1350,11 +1343,11 @@ kbd {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  width: 100%;
-  margin: 0;
-  padding: 11px 12px;
+  width: calc(100% - 28px);
+  margin: 0 14px 12px;
+  padding: 12px;
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: 10px;
   color: var(--text);
   background: var(--surface-raised);
   text-align: left;
@@ -1393,7 +1386,7 @@ kbd {
 .netlist-nav-btn,
 .netlist-item-add-btn {
   border-color: var(--border);
-  color: var(--text);
+  color: #3f454c;
   background: var(--surface-raised);
 }
 
@@ -1418,7 +1411,8 @@ kbd {
 .device-card.active,
 .device-card.opt-b.active,
 .netlist-tab.active,
-.netlist-item.selected {
+.netlist-item.selected,
+.netlist-item.playing {
   border-color: #8fbdf1;
   color: #1265c3;
   background: #eaf4ff;
