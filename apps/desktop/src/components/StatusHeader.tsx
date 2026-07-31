@@ -1,40 +1,27 @@
 import type { OControlState } from '@o-control/shared';
-import { Home, Power } from 'lucide-react';
+import { Power } from 'lucide-react';
 
 type Props = {
   state: OControlState;
   serviceReachable: boolean;
-  connectionLabel: string;
   pendingCommand: string | null;
-  onContext: () => void;
   onPower: () => void;
 };
 
-export function inputLabel(input: OControlState['input']) {
-  if (input === 'unknown') return 'Input --';
-  if (input === 'bluetooth') return 'Bluetooth';
-  if (input === 'net') return 'Network';
-  return input.charAt(0).toUpperCase() + input.slice(1);
-}
-
-export function StatusHeader({ state, serviceReachable, connectionLabel, pendingCommand, onContext, onPower }: Props) {
+export function StatusHeader({ state, serviceReachable, pendingCommand, onPower }: Props) {
+  const connected = serviceReachable && state.connected;
   const powerPending = pendingCommand === 'power';
-  const receiverName = state.connected ? 'Onkyo Hi-res' : 'O-Control';
 
   return (
     <header className="status-header">
-      <button className="header-icon-button" type="button" title="Settings" aria-label="Settings" onClick={onContext}>
-        <Home size={19} />
-      </button>
+      <span
+        className={`status-dot ${connected ? 'connected' : 'offline'}`}
+        role="status"
+        aria-label={connected ? 'Receiver connected' : 'Receiver not connected'}
+        title={connected ? 'Connected' : 'Not connected'}
+      />
 
-      <div className="header-center">
-        <h1>{receiverName}</h1>
-        <p>{inputLabel(state.input)}</p>
-        <span className={`status-line ${statusClass}`}>
-          <span className="status-dot" />
-          {pendingCommand ? 'Updating' : connectionLabel}
-        </span>
-      </div>
+      <h1>CR-N775</h1>
 
       <button
         className={`header-icon-button power ${state.power === 'on' ? 'active' : ''}`}

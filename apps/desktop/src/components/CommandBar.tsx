@@ -1,6 +1,5 @@
 import type { OControlState } from '@o-control/shared';
 import { ListMusic, SlidersHorizontal, Volume2, VolumeX, Wifi } from 'lucide-react';
-import { inputLabel } from './StatusHeader';
 
 type Props = {
   state: OControlState;
@@ -11,6 +10,13 @@ type Props = {
   onOpenSettings: () => void;
   onOpenList: () => void;
 };
+
+function inputLabel(input: OControlState['input']) {
+  if (input === 'unknown') return 'Input --';
+  if (input === 'bluetooth') return 'Bluetooth';
+  if (input === 'net') return 'Network';
+  return input.charAt(0).toUpperCase() + input.slice(1);
+}
 
 export function CommandBar({ state, receiverAvailable, activePanel, onOpenInput, onOpenVolume, onOpenSettings, onOpenList }: Props) {
   return (

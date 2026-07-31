@@ -89,12 +89,7 @@ export function DesktopShell() {
         <StatusHeader
           state={state}
           serviceReachable={api.serviceReachable}
-          connectionLabel={api.connectionLabel}
           pendingCommand={api.pendingCommand}
-          onContext={() => {
-            setSettingsOpen(true);
-            setActivePanel(null);
-          }}
           onPower={runPower}
         />
 

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { NowPlayingMeta, PlaybackStatus } from '@o-control/shared';
 
 type Props = {
@@ -39,14 +40,31 @@ export function NowPlaying({ playback, nowPlaying, serviceUrl }: Props) {
     ? `${serviceUrl}/cover-art?t=${encodeURIComponent(nowPlaying.title + nowPlaying.artist)}`
     : null;
 
+  const [artFailed, setArtFailed] = useState(false);
+
+  useEffect(() => {
+    setArtFailed(false);
+  }, [coverArtSrc]);
+
+  const showCoverArt = coverArtSrc !== null && !artFailed;
+
   return (
     <section className="now-playing" aria-label="Now playing">
-      <div className="artwork-container">
-        {coverArtSrc ? (
-          <img src={coverArtSrc} alt="Cover Artwork" className="artwork-image" />
+      <div className="artwork-container" data-testid="artwork-frame">
+        {showCoverArt ? (
+          <img
+            src={coverArtSrc ?? undefined}
+            alt="Cover artwork"
+            className="artwork-image"
+            onError={() => setArtFailed(true)}
+          />
         ) : (
-          <div className="artwork-placeholder" aria-hidden="true">
-            <span />
+          <div
+            className="artwork-placeholder"
+            data-testid="artwork-placeholder"
+            aria-label="Artwork unavailable"
+          >
+            <span aria-hidden="true" />
           </div>
         )}
       </div>
@@ -60,8 +78,16 @@ export function NowPlaying({ playback, nowPlaying, serviceUrl }: Props) {
       </div>
 
       <div className="track-copy">
-        <p className="track-title">{hasTitle ? nowPlaying.title : 'No track info'}</p>
-        {detail ? <p className="track-detail">{detail}</p> : <p className="track-detail muted-text">Metadata unavailable</p>}
+        <p className="track-title" title={hasTitle ? nowPlaying.title : 'No track info'}>
+          {hasTitle ? nowPlaying.title : 'No track info'}
+        </p>
+        {detail ? (
+          <p className="track-detail" title={detail}>
+            {detail}
+          </p>
+        ) : (
+          <p className="track-detail muted-text">Metadata unavailable</p>
+        )}
         {formatDetail ? <p className="track-format">{formatDetail}</p> : null}
       </div>
     </section>
