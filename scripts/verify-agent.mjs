@@ -38,8 +38,21 @@ export const stages = [
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-export function resolveStageCommand(command, platform = process.platform) {
-  return platform === 'win32' && command === 'npm' ? 'npm.cmd' : command;
+export function stageSpawnSpec(
+  stage,
+  platform = process.platform,
+  env = process.env,
+) {
+  if (platform === 'win32' && stage.command === 'npm') {
+    return {
+      command: env.ComSpec || 'cmd.exe',
+      args: ['/d', '/s', '/c', 'npm.cmd', ...stage.args],
+    };
+  }
+  return {
+    command: stage.command,
+    args: stage.args,
+  };
 }
 
 export function windowsTaskkillSpec(pid) {
@@ -74,25 +87,22 @@ function isPosixProcessGroupAlive(pid, killImpl) {
   }
 }
 
-function isProcessTreeAlive(child, platform, killImpl) {
+function isPosixProcessTreeAlive(child, killImpl) {
   if (!child.pid) {
     return false;
-  }
-  if (platform === 'win32') {
-    return child.exitCode === null && child.signalCode === null;
   }
   return isPosixProcessGroupAlive(child.pid, killImpl);
 }
 
-async function waitForProcessTreeToStop(child, options, timeoutMs) {
+async function waitForPosixProcessTreeToStop(child, options, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (
-    isProcessTreeAlive(child, options.platform, options.killImpl) &&
+    isPosixProcessTreeAlive(child, options.killImpl) &&
     Date.now() < deadline
   ) {
     await sleep(options.pollIntervalMs);
   }
-  return !isProcessTreeAlive(child, options.platform, options.killImpl);
+  return !isPosixProcessTreeAlive(child, options.killImpl);
 }
 
 function runTaskkill(pid, options) {
@@ -129,7 +139,7 @@ function runTaskkill(pid, options) {
       );
     });
     killer.once('exit', (code, signal) => {
-      if (code === 0) {
+      if (code === 0 || code === 128) {
         settle(resolve);
       } else {
         settle(
@@ -151,17 +161,21 @@ async function terminateProcessTree(child, options) {
     return;
   }
 
-  if (!isProcessTreeAlive(child, options.platform, options.killImpl)) {
+  if (!isPosixProcessTreeAlive(child, options.killImpl)) {
     return;
   }
 
   signalProcessGroup(child.pid, 'SIGTERM', options.killImpl);
-  if (await waitForProcessTreeToStop(child, options, options.termGraceMs)) {
+  if (
+    await waitForPosixProcessTreeToStop(child, options, options.termGraceMs)
+  ) {
     return;
   }
 
   signalProcessGroup(child.pid, 'SIGKILL', options.killImpl);
-  if (await waitForProcessTreeToStop(child, options, options.killGraceMs)) {
+  if (
+    await waitForPosixProcessTreeToStop(child, options, options.killGraceMs)
+  ) {
     return;
   }
 
@@ -180,6 +194,7 @@ function cancellationSignal(signal) {
 function stageOptions(options) {
   return {
     platform: options.platform ?? process.platform,
+    env: options.env ?? process.env,
     spawnImpl: options.spawnImpl ?? spawn,
     killImpl: options.killImpl ?? process.kill.bind(process),
     signal: options.signal,
@@ -207,16 +222,13 @@ export function runStage(stage, suppliedOptions = {}) {
 
   return new Promise((resolve, reject) => {
     const startedAt = Date.now();
-    const child = options.spawnImpl(
-      resolveStageCommand(stage.command, options.platform),
-      stage.args,
-      {
-        cwd: process.cwd(),
-        stdio: options.stdio,
-        shell: false,
-        detached: options.platform !== 'win32',
-      },
-    );
+    const spawnSpec = stageSpawnSpec(stage, options.platform, options.env);
+    const child = options.spawnImpl(spawnSpec.command, spawnSpec.args, {
+      cwd: process.cwd(),
+      stdio: options.stdio,
+      shell: false,
+      detached: options.platform !== 'win32',
+    });
     options.onSpawn?.(child);
 
     let completionStarted = false;
@@ -259,19 +271,33 @@ export function runStage(stage, suppliedOptions = {}) {
           throw new Error(`${stage.name} cancelled by ${details.signal}`);
         }
 
-        const treeStopped = await waitForProcessTreeToStop(
-          child,
-          options,
-          options.exitGraceMs,
-        );
-        const leftDescendants = !treeStopped;
-        if (leftDescendants) {
+        let leftDescendants = false;
+        if (options.platform === 'win32') {
           try {
             await terminateProcessTree(child, options);
           } catch (error) {
             throw new Error(`${stage.name} cleanup failed: ${error.message}`, {
               cause: error,
             });
+          }
+        } else {
+          const treeStopped = await waitForPosixProcessTreeToStop(
+            child,
+            options,
+            options.exitGraceMs,
+          );
+          leftDescendants = !treeStopped;
+          if (leftDescendants) {
+            try {
+              await terminateProcessTree(child, options);
+            } catch (error) {
+              throw new Error(
+                `${stage.name} cleanup failed: ${error.message}`,
+                {
+                  cause: error,
+                },
+              );
+            }
           }
         }
 
