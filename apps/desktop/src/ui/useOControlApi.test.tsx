@@ -239,8 +239,11 @@ describe('useOControlApi', () => {
         'input:net',
       );
     });
+    expect(result.current.pendingCommand).toBe('input:net');
+
     rerender({ serviceUrl: 'http://new-service:8787' });
     await waitFor(() => expect(result.current.state.nowPlaying.title).toBe('New endpoint'));
+    expect(result.current.pendingCommand).toBeNull();
 
     let succeeded: boolean | undefined;
     await act(async () => {
@@ -249,6 +252,7 @@ describe('useOControlApi', () => {
     });
 
     expect(succeeded).toBe(false);
+    expect(result.current.pendingCommand).toBeNull();
     expect(result.current.state.nowPlaying.title).toBe('New endpoint');
     expect(result.current.state.volume).toBe(44);
     unmount();

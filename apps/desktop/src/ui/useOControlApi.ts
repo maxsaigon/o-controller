@@ -81,6 +81,7 @@ export function useOControlApi(serviceUrl: string) {
     lifecycleGeneration.current = lifecycle;
     mounted.current = true;
     activeServiceUrl.current = serviceUrl;
+    setPendingCommand(null);
     void refreshState(serviceUrl, () => (
       mounted.current
       && lifecycleGeneration.current === lifecycle
