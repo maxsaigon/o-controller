@@ -10,9 +10,13 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "typecheck": "tsc --noEmit -p packages/shared/tsconfig.json && tsc --noEmit -p packages/eiscp/tsconfig.json && tsc --noEmit -p packages/upnp/tsconfig.json && tsc --noEmit -p packages/service/tsconfig.json && tsc --noEmit -p tools/mock-receiver/tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json && tsc --noEmit -p apps/desktop/tsconfig.json && tsc --noEmit -p apps/raycast/tsconfig.json",
     "test": "npm run test --workspaces --if-present",
     "test:integration": "node --import tsx --test tests/integration/service-mock.test.ts tests/integration/disconnect-reconnect.test.ts",
     "test:all": "npm test && npm run test:integration",
+    "test:smoke": "node scripts/service-smoke.mjs",
+    "verify:agent": "node scripts/verify-agent.mjs",
+    "check:tauri": "cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml",
     "dev:service": "npm run dev -w @o-control/service",
     "dev:mock": "npm run dev -w @o-control/mock-receiver",
     "lint": "npm run lint --workspaces --if-present",
