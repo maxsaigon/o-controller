@@ -13,8 +13,11 @@
   --text: #202124;
   --text-muted: #686d74;
   --accent: #1677e8;
+  --accent-strong: #1265c3;
   --connected: #27a653;
+  --connected-text: #137a37;
   --offline: #d74848;
+  --offline-text: #b42318;
   background: transparent;
   color: var(--text);
 }
@@ -169,7 +172,7 @@ p {
 
 .header-icon-button.power.active,
 .command-rail button.active {
-  color: var(--accent);
+  color: var(--accent-strong);
 }
 
 button:disabled {
@@ -189,7 +192,7 @@ button:disabled {
 }
 
 .status-line.connected {
-  color: var(--connected);
+  color: var(--connected-text);
 }
 
 .status-line.warn {
@@ -197,7 +200,7 @@ button:disabled {
 }
 
 .status-line.offline {
-  color: var(--offline);
+  color: var(--offline-text);
 }
 
 .status-dot {
@@ -290,7 +293,7 @@ button:disabled {
 }
 
 .playback-status {
-  color: var(--accent);
+  color: var(--accent-strong);
   font-size: 11px;
   font-weight: 640;
   letter-spacing: 0;
@@ -361,16 +364,16 @@ button:disabled {
 .primary-play {
   width: 50px;
   min-height: 50px;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--accent-strong);
   border-radius: 999px;
   color: #ffffff;
-  background: var(--accent);
+  background: var(--accent-strong);
 }
 
 .primary-play:hover {
-  border-color: #1265c3;
+  border-color: var(--accent-strong);
   color: #ffffff;
-  background: #1265c3;
+  background: var(--accent-strong);
 }
 
 .panel-active .round-button {
@@ -419,7 +422,7 @@ button:disabled {
 }
 
 .command-rail button.muted {
-  color: var(--offline);
+  color: var(--offline-text);
 }
 
 .command-rail span {
@@ -535,7 +538,7 @@ button:disabled {
 }
 
 .mute-toggle.active {
-  color: var(--offline);
+  color: var(--offline-text);
   background: #fff1f0;
 }
 
@@ -558,7 +561,7 @@ button:disabled {
 }
 
 .preset-row button.standby-preset {
-  color: var(--offline);
+  color: var(--offline-text);
 }
 
 .inline-error {
@@ -579,8 +582,13 @@ button:disabled {
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px 14px 14px;
+  padding: 12px 0 14px;
   background: rgba(16, 17, 18, 0.42);
+}
+
+.settings-view > :not(.settings-link) {
+  margin-left: 14px;
+  margin-right: 14px;
 }
 
 .ghost-button {
@@ -707,12 +715,12 @@ button:disabled {
   min-width: 0;
   padding: 0 12px;
   color: #ffffff;
-  background: var(--accent);
+  background: var(--accent-strong);
 }
 
 .primary-button:hover {
   color: #ffffff;
-  background: #1265c3;
+  background: var(--accent-strong);
 }
 
 .settings-actions .ghost-button {
@@ -1009,10 +1017,11 @@ kbd {
 .netlist-panel {
   display: flex;
   flex-direction: column;
-  width: 100%;
+  width: auto;
   height: 280px; /* Increased height slightly to accommodate the tabs switcher */
   min-height: 280px;
   max-height: 280px;
+  margin: 0 10px 10px;
   padding: 14px 18px 10px;
   box-sizing: border-box;
   overflow: hidden;
@@ -1331,10 +1340,18 @@ kbd {
 }
 
 .status-pill.connected {
-  color: var(--connected);
+  color: var(--connected-text);
 }
 
 .status-pill.offline {
+  color: var(--offline-text);
+}
+
+.status-pill.connected .status-dot {
+  color: var(--connected);
+}
+
+.status-pill.offline .status-dot {
   color: var(--offline);
 }
 
@@ -1449,6 +1466,15 @@ kbd {
   background: var(--surface-muted);
 }
 
+.input-grid button.selected:hover,
+.netlist-tab.active:hover,
+.netlist-item.selected:hover,
+.netlist-item.playing:hover {
+  border-color: #8fbdf1;
+  color: #1265c3;
+  background: #eaf4ff;
+}
+
 .volume-slider,
 .checkbox-field input[type="checkbox"] {
   accent-color: var(--accent);
@@ -1502,7 +1528,7 @@ kbd {
 
 .device-info .status.error,
 .icon-btn.danger:hover {
-  color: var(--offline);
+  color: var(--offline-text);
 }
 
 kbd {

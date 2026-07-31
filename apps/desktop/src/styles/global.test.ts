@@ -50,18 +50,67 @@ function declarationForSelectorList(selectors: string[], property: string): stri
   return value as string;
 }
 
+function ruleIndexForSelectorList(selectors: string[]): number {
+  const index = rules.findIndex((candidate) => (
+    candidate.selectors.length === selectors.length
+    && candidate.selectors.every((selector, selectorIndex) => selector === selectors[selectorIndex])
+  ));
+
+  expect(index, `${selectors.join(', ')} must have a rule`).toBeGreaterThanOrEqual(0);
+  return index;
+}
+
+function lastRuleIndexForSelector(selector: string): number {
+  let index = -1;
+
+  rules.forEach((rule, ruleIndex) => {
+    if (rule.selectors.includes(selector)) index = ruleIndex;
+  });
+
+  expect(index, `${selector} must have a rule`).toBeGreaterThanOrEqual(0);
+  return index;
+}
+
+function classLikeSpecificity(selector: string): number {
+  return selector.match(/\.[\w-]+|:(?!:)[\w-]+/g)?.length ?? 0;
+}
+
+function contrastRatio(foreground: string, background: string): number {
+  const luminance = (hex: string) => {
+    const channels = hex.slice(1).match(/.{2}/g);
+    expect(channels, `${hex} must be a six-digit hex color`).toHaveLength(3);
+    const [red, green, blue] = (channels as string[])
+      .map((channel) => Number.parseInt(channel, 16) / 255)
+      .map((channel) => channel <= 0.04045
+        ? channel / 12.92
+        : ((channel + 0.055) / 1.055) ** 2.4);
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  };
+
+  const foregroundLuminance = luminance(foreground);
+  const backgroundLuminance = luminance(background);
+  return (Math.max(foregroundLuminance, backgroundLuminance) + 0.05)
+    / (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
+}
+
 describe('desktop native layout tokens', () => {
   it.each([
-    '--popover-width: 390px',
-    '--popover-height: 728px',
-    '--artwork-size: 340px',
-    '--player-padding: 24px',
-    '--artwork-gap: 18px',
-    'color-scheme: light',
-    '--surface: #f7f7f9',
-    '--accent: #1677e8',
-  ])('includes %s', (token) => {
-    expect(css).toContain(token);
+    ['--popover-width', '390px'],
+    ['--popover-height', '728px'],
+    ['--artwork-size', '340px'],
+    ['--player-padding', '24px'],
+    ['--artwork-gap', '18px'],
+    ['color-scheme', 'light'],
+    ['--surface', '#f7f7f9'],
+    ['--surface-muted', '#eef0f3'],
+    ['--accent', '#1677e8'],
+    ['--connected', '#27a653'],
+    ['--offline', '#d74848'],
+    ['--connected-text', '#137a37'],
+    ['--offline-text', '#b42318'],
+    ['--accent-strong', '#1265c3'],
+  ])('declares :root %s as %s', (property, value) => {
+    expect(declarationFor(':root', property)).toBe(value);
   });
 
   it('uses the approved translucent status header surface', () => {
@@ -125,5 +174,64 @@ describe('desktop native layout tokens', () => {
     expect(declarationFor('.netlist-item.playing', 'border-color')).toBe('#8fbdf1');
     expect(declarationFor('.netlist-item.playing', 'color')).toBe('#1265c3');
     expect(declarationFor('.netlist-item.playing', 'background')).toBe('#eaf4ff');
+  });
+
+  it('keeps the NetList border box inside its inherited sheet margins', () => {
+    expect(declarationFor('.netlist-panel', 'width')).toBe('auto');
+    expect(declarationFor('.netlist-panel', 'margin')).toBe('0 10px 10px');
+    expect(declarationFor('.netlist-panel', 'box-sizing')).toBe('border-box');
+  });
+
+  it('uses accessible text colors without changing brand and dot colors', () => {
+    const surfaceMuted = declarationFor(':root', '--surface-muted');
+    const connectedText = declarationFor(':root', '--connected-text');
+    const offlineText = declarationFor(':root', '--offline-text');
+    const accentStrong = declarationFor(':root', '--accent-strong');
+
+    expect(contrastRatio(connectedText, surfaceMuted)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(offlineText, surfaceMuted)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio('#ffffff', accentStrong)).toBeGreaterThanOrEqual(4.5);
+    expect(declarationFor('.status-pill.connected', 'color')).toBe('var(--connected-text)');
+    expect(declarationFor('.status-pill.offline', 'color')).toBe('var(--offline-text)');
+    expect(declarationFor('.status-pill.connected .status-dot', 'color')).toBe('var(--connected)');
+    expect(declarationFor('.status-pill.offline .status-dot', 'color')).toBe('var(--offline)');
+    expect(declarationFor('.primary-play', 'background')).toBe('var(--accent-strong)');
+    expect(declarationFor('.primary-button', 'background')).toBe('var(--accent-strong)');
+    expect(declarationForSelectorList(
+      ['.header-icon-button.power.active', '.command-rail button.active'],
+      'color',
+    )).toBe('var(--accent-strong)');
+  });
+
+  it('aligns the settings link with its direct-child peers without clipping', () => {
+    expect(declarationFor('.settings-view', 'padding')).toBe('12px 0 14px');
+    expect(declarationFor('.settings-view > :not(.settings-link)', 'margin-left')).toBe('14px');
+    expect(declarationFor('.settings-view > :not(.settings-link)', 'margin-right')).toBe('14px');
+    expect(declarationFor('.settings-link', 'width')).toBe('calc(100% - 28px)');
+    expect(declarationFor('.settings-link', 'margin')).toBe('0 14px 12px');
+  });
+
+  it('places selected hover treatments after generic hover rules with higher specificity', () => {
+    const selectedHoverSelectors = [
+      '.input-grid button.selected:hover',
+      '.netlist-tab.active:hover',
+      '.netlist-item.selected:hover',
+      '.netlist-item.playing:hover',
+    ];
+    const genericHoverSelectors = [
+      '.input-grid button:hover',
+      '.netlist-tab:hover',
+      '.netlist-item:hover',
+      '.netlist-item:hover',
+    ];
+    const selectedHoverIndex = ruleIndexForSelectorList(selectedHoverSelectors);
+
+    expect(declarationForSelectorList(selectedHoverSelectors, 'border-color')).toBe('#8fbdf1');
+    expect(declarationForSelectorList(selectedHoverSelectors, 'color')).toBe('#1265c3');
+    expect(declarationForSelectorList(selectedHoverSelectors, 'background')).toBe('#eaf4ff');
+    selectedHoverSelectors.forEach((selector, index) => {
+      expect(selectedHoverIndex).toBeGreaterThan(lastRuleIndexForSelector(genericHoverSelectors[index]));
+      expect(classLikeSpecificity(selector)).toBeGreaterThan(classLikeSpecificity(genericHoverSelectors[index]));
+    });
   });
 });
