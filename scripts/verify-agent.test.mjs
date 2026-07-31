@@ -4,12 +4,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import {
-  runAgentMain,
-  runStage,
-  stageSpawnSpec,
-  windowsTaskkillSpec,
-} from './verify-agent.mjs';
+import { runAgentMain, runStage } from './verify-agent.mjs';
 import { createOutputTail } from './service-smoke.mjs';
 
 const LONG_LIVED_CHILD = 'setInterval(() => {}, 1000)';
@@ -36,50 +31,6 @@ async function waitForCondition(predicate, timeoutMs, description) {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error(`Timed out waiting for ${description}`);
-}
-
-function fakeChild(pid) {
-  const child = new EventEmitter();
-  child.pid = pid;
-  child.exitCode = null;
-  child.signalCode = null;
-  child.kill = () => true;
-  return child;
-}
-
-function emitExit(child, code, signal = null) {
-  child.exitCode = code;
-  child.signalCode = signal;
-  child.emit('exit', code, signal);
-}
-
-function windowsStageHarness() {
-  const calls = [];
-  const leader = fakeChild(4321);
-  const taskkill = fakeChild(4322);
-  const logs = [];
-  const result = runStage(
-    {
-      name: 'Windows fixture',
-      command: 'npm',
-      args: ['run', 'typecheck'],
-      timeoutMs: 2000,
-    },
-    {
-      platform: 'win32',
-      env: { ComSpec: 'C:\\Windows\\System32\\cmd.exe' },
-      logger(message) {
-        logs.push(message);
-      },
-      killGraceMs: 500,
-      spawnImpl(command, args, options) {
-        calls.push({ command, args, options });
-        return calls.length === 1 ? leader : taskkill;
-      },
-    },
-  );
-
-  return { calls, leader, taskkill, logs, result };
 }
 
 async function readPidWhenReady(pidFile) {
@@ -297,107 +248,35 @@ test(
   },
 );
 
-test('Windows wraps npm.cmd with the command interpreter and shell false', () => {
-  assert.deepEqual(
-    stageSpawnSpec({ command: 'npm', args: ['run', 'typecheck'] }, 'win32', {
-      ComSpec: 'C:\\Windows\\System32\\cmd.exe',
-    }),
-    {
-      command: 'C:\\Windows\\System32\\cmd.exe',
-      args: ['/d', '/s', '/c', 'npm.cmd', 'run', 'typecheck'],
-    },
-  );
-  assert.deepEqual(
-    stageSpawnSpec({ command: 'npm', args: ['test'] }, 'win32', {}),
-    {
-      command: 'cmd.exe',
-      args: ['/d', '/s', '/c', 'npm.cmd', 'test'],
-    },
-  );
-  assert.deepEqual(
-    stageSpawnSpec({ command: 'npm', args: ['test'] }, 'linux', {}),
-    {
-      command: 'npm',
-      args: ['test'],
-    },
-  );
-  assert.deepEqual(windowsTaskkillSpec(321), {
-    command: 'taskkill',
-    args: ['/PID', '321', '/T', '/F'],
-  });
-});
+test('Windows verification fails before spawning a stage', async () => {
+  let spawnCalls = 0;
+  const errors = [];
 
-test('Windows leader exit waits for taskkill tree cleanup before passing', async () => {
-  const item = windowsStageHarness();
-  let settled = false;
-  void item.result.finally(() => {
-    settled = true;
-  });
-
-  assert.deepEqual(item.calls[0], {
-    command: 'C:\\Windows\\System32\\cmd.exe',
-    args: ['/d', '/s', '/c', 'npm.cmd', 'run', 'typecheck'],
-    options: {
-      cwd: process.cwd(),
-      stdio: 'inherit',
-      shell: false,
-      detached: false,
+  const exitCode = await runAgentMain({
+    platform: 'win32',
+    stages: [
+      {
+        name: 'must not start',
+        command: 'npm',
+        args: ['test'],
+        timeoutMs: 1000,
+      },
+    ],
+    logger: () => {},
+    errorLogger(message) {
+      errors.push(message);
+    },
+    spawnImpl() {
+      spawnCalls += 1;
+      throw new Error('stage spawn must not be reached');
     },
   });
 
-  emitExit(item.leader, 0);
-  await waitForCondition(
-    () => item.calls.length === 2,
-    500,
-    'Windows taskkill spawn',
-  );
-
-  assert.deepEqual(item.calls[1], {
-    command: 'taskkill',
-    args: ['/PID', '4321', '/T', '/F'],
-    options: {
-      shell: false,
-      stdio: 'ignore',
-      windowsHide: true,
-    },
-  });
-  assert.equal(settled, false);
-
-  emitExit(item.taskkill, 0);
-  await item.result;
-  assert.match(item.logs.at(-1), /Windows fixture PASS/);
-});
-
-test('Windows taskkill not-found is treated as an already-clean tree', async () => {
-  const item = windowsStageHarness();
-  emitExit(item.leader, 0);
-  await waitForCondition(
-    () => item.calls.length === 2,
-    500,
-    'Windows taskkill spawn',
-  );
-
-  emitExit(item.taskkill, 128);
-
-  await item.result;
-});
-
-test('Windows taskkill failure rejects an otherwise successful stage', async () => {
-  const item = windowsStageHarness();
-  const failure = assert.rejects(
-    item.result,
-    /Windows fixture cleanup failed: taskkill failed \(code=1, signal=null\)/,
-  );
-  emitExit(item.leader, 0);
-  await waitForCondition(
-    () => item.calls.length === 2,
-    500,
-    'Windows taskkill spawn',
-  );
-
-  emitExit(item.taskkill, 1);
-
-  await failure;
+  assert.equal(exitCode, 1);
+  assert.equal(spawnCalls, 0);
+  assert.deepEqual(errors, [
+    'verify:agent requires POSIX process-group isolation; Windows is not supported',
+  ]);
 });
 
 test('captured output retains only a bounded tail', () => {
