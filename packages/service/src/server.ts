@@ -760,28 +760,63 @@ function cleanupRuntime(): void {
   receiver.destroy();
 }
 
-app.addHook('onClose', async () => {
-  cleanupRuntime();
-});
-
-export async function stop(): Promise<void> {
+async function closeRuntime(): Promise<void> {
   if (app.server.listening) {
-    await app.close();
+    try {
+      await app.close();
+    } finally {
+      cleanupRuntime();
+    }
     return;
   }
   cleanupRuntime();
 }
 
-export async function start(): Promise<void> {
-  await app.listen({ port: config.O_CONTROL_PORT, host: '0.0.0.0' });
-  receiver.connect();
+app.addHook('onClose', async () => {
+  cleanupRuntime();
+});
 
-  if (!config.MOCK_MODE) {
-    dlnaDiscovery.start();
-    void getReceiverAVTransportUrl();
+let startPromise: Promise<void> | null = null;
+let stopRequested = false;
+
+export async function stop(): Promise<void> {
+  stopRequested = true;
+  if (startPromise) {
+    await startPromise.catch(() => {});
   }
+  await closeRuntime();
+}
 
-  app.log.info(`O-Control service listening on port ${config.O_CONTROL_PORT}`);
+async function startRuntime(): Promise<void> {
+  await app.listen({ port: config.O_CONTROL_PORT, host: '0.0.0.0' });
+
+  try {
+    if (stopRequested) {
+      await closeRuntime();
+      return;
+    }
+
+    receiver.connect();
+
+    if (!config.MOCK_MODE) {
+      dlnaDiscovery.start();
+      void getReceiverAVTransportUrl();
+    }
+
+    app.log.info(`O-Control service listening on port ${config.O_CONTROL_PORT}`);
+  } catch (err) {
+    try {
+      await closeRuntime();
+    } catch (closeErr) {
+      app.log.error(closeErr, 'Failed to close service after startup failure');
+    }
+    throw err;
+  }
+}
+
+export function start(): Promise<void> {
+  startPromise ??= startRuntime();
+  return startPromise;
 }
 
 app.get('/dlna/servers', async (_request, reply) => {

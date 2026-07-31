@@ -11,12 +11,15 @@ const CONTENT_DIRECTORY_ST = 'urn:schemas-upnp-org:service:ContentDirectory:1';
  * Parse a device description XML to extract the friendlyName
  * and the ContentDirectory controlURL.
  */
-async function parseDeviceDescription(locationUrl: string): Promise<{
+async function parseDeviceDescription(locationUrl: string, signal?: AbortSignal): Promise<{
   friendlyName: string;
   contentDirectoryUrl: string;
 } | null> {
   try {
-    const res = await fetch(locationUrl, { signal: AbortSignal.timeout(5000) });
+    const requestSignal = signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(5000)])
+      : AbortSignal.timeout(5000);
+    const res = await fetch(locationUrl, { signal: requestSignal });
     if (!res.ok) return null;
     const xml = await res.text();
 
@@ -72,6 +75,7 @@ export class DLNADiscovery extends EventEmitter {
   private scanTimer: ReturnType<typeof setInterval> | undefined;
   private scanInterval: number;
   private started = false;
+  private lifecycleController: AbortController | null = null;
 
   constructor(opts?: DLNADiscoveryOptions) {
     super();
@@ -82,13 +86,16 @@ export class DLNADiscovery extends EventEmitter {
   start(): void {
     if (this.started) return;
     this.started = true;
+    this.lifecycleController = new AbortController();
 
     this.ssdpClient = new SSDPClient();
 
     this.ssdpClient.on('response', (headers: SsdpHeaders, _statusCode: number, rinfo: RemoteInfo) => {
       const location = String(headers.LOCATION ?? headers.location ?? '');
       const usn = String(headers.USN ?? headers.usn ?? '');
-      void this.handleSSDPResponse(location, usn, rinfo.address);
+      const signal = this.lifecycleController?.signal;
+      if (!signal) return;
+      void this.handleSSDPResponse(location, usn, rinfo.address, signal).catch(() => {});
     });
 
     // Initial scan
@@ -105,6 +112,8 @@ export class DLNADiscovery extends EventEmitter {
   stop(): void {
     if (!this.started) return;
     this.started = false;
+    this.lifecycleController?.abort();
+    this.lifecycleController = null;
 
     if (this.scanTimer) {
       clearInterval(this.scanTimer);
@@ -120,7 +129,14 @@ export class DLNADiscovery extends EventEmitter {
   /** Trigger an immediate SSDP scan */
   scan(): void {
     if (!this.ssdpClient) return;
-    this.ssdpClient.search(CONTENT_DIRECTORY_ST);
+    try {
+      const pending = this.ssdpClient.search(CONTENT_DIRECTORY_ST);
+      if (pending) {
+        void Promise.resolve(pending).catch(() => {});
+      }
+    } catch {
+      // Search failed synchronously; the next scheduled scan can retry.
+    }
   }
 
   /** Get all currently known servers */
@@ -133,14 +149,26 @@ export class DLNADiscovery extends EventEmitter {
     return this.servers.get(id);
   }
 
-  private async handleSSDPResponse(location: string, usn: string, address: string): Promise<void> {
-    if (!location || !usn) return;
+  private async handleSSDPResponse(
+    location: string,
+    usn: string,
+    address: string,
+    signal: AbortSignal,
+  ): Promise<void> {
+    if (!location || !usn || signal.aborted) return;
 
     // Already known?
     if (this.servers.has(usn)) return;
 
-    const parsed = await parseDeviceDescription(location);
-    if (!parsed) return;
+    const parsed = await parseDeviceDescription(location, signal);
+    if (
+      !parsed
+      || signal.aborted
+      || !this.started
+      || this.lifecycleController?.signal !== signal
+    ) {
+      return;
+    }
 
     const server: DLNAServer = {
       id: usn,

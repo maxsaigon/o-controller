@@ -8,12 +8,19 @@ async function shutdown(): Promise<void> {
   await stop();
 }
 
+function handleShutdown(): void {
+  void shutdown().catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  });
+}
+
 process.once('SIGINT', () => {
-  void shutdown();
+  handleShutdown();
 });
 
 process.once('SIGTERM', () => {
-  void shutdown();
+  handleShutdown();
 });
 
 void start().catch((err) => {
