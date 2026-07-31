@@ -57,6 +57,76 @@ describe('NowPlaying', () => {
     expect(nextImage.getAttribute('src')).not.toBe(firstSrc);
   });
 
+  it('uses a bounded opaque cache identity for large embedded artwork', () => {
+    const firstPayload = 'A'.repeat(16_384);
+    const firstState = receiverState({
+      nowPlaying: { coverArtUrl: `data:image/jpeg;base64,${firstPayload}` },
+    });
+    const { rerender } = render(
+      <NowPlaying
+        playback={firstState.playback}
+        nowPlaying={firstState.nowPlaying}
+        serviceUrl="http://localhost:8787"
+      />,
+    );
+    const firstSrc = screen.getByRole('img', { name: 'Cover artwork' }).getAttribute('src') ?? '';
+
+    const nextPayload = `B${firstPayload}`;
+    const nextState = receiverState({
+      nowPlaying: { coverArtUrl: `data:image/jpeg;base64,${nextPayload}` },
+    });
+    rerender(
+      <NowPlaying
+        playback={nextState.playback}
+        nowPlaying={nextState.nowPlaying}
+        serviceUrl="http://localhost:8787"
+      />,
+    );
+    const nextSrc = screen.getByRole('img', { name: 'Cover artwork' }).getAttribute('src') ?? '';
+    const firstUrl = new URL(firstSrc);
+
+    expect.soft(firstSrc.length).toBeLessThan(256);
+    expect.soft(nextSrc.length).toBeLessThan(256);
+    expect.soft(firstUrl.pathname).toBe('/cover-art');
+    expect.soft(firstUrl.searchParams.get('t')).toMatch(/^[a-z0-9]+-[a-z0-9]+$/);
+    expect.soft(firstSrc).not.toContain('base64');
+    expect.soft(firstSrc).not.toContain(firstPayload.slice(0, 512));
+    expect.soft(nextSrc).not.toContain(nextPayload.slice(0, 513));
+    expect(nextSrc).not.toBe(firstSrc);
+  });
+
+  it('retries artwork when a previously failed identity returns', () => {
+    const firstState = receiverState({ nowPlaying: { coverArtUrl: '/cover-art/first' } });
+    const { rerender } = render(
+      <NowPlaying
+        playback={firstState.playback}
+        nowPlaying={firstState.nowPlaying}
+        serviceUrl="http://localhost:8787"
+      />,
+    );
+    fireEvent.error(screen.getByRole('img', { name: 'Cover artwork' }));
+    expect(screen.getByRole('img', { name: 'Artwork unavailable' })).toBeInTheDocument();
+
+    const nextState = receiverState({ nowPlaying: { coverArtUrl: '/cover-art/next' } });
+    rerender(
+      <NowPlaying
+        playback={nextState.playback}
+        nowPlaying={nextState.nowPlaying}
+        serviceUrl="http://localhost:8787"
+      />,
+    );
+    expect(screen.getByRole('img', { name: 'Cover artwork' })).toBeInTheDocument();
+
+    rerender(
+      <NowPlaying
+        playback={firstState.playback}
+        nowPlaying={firstState.nowPlaying}
+        serviceUrl="http://localhost:8787"
+      />,
+    );
+    expect(screen.getByRole('img', { name: 'Cover artwork' })).toBeInTheDocument();
+  });
+
   it('ignores a stale error from artwork that has been replaced', () => {
     const firstState = receiverState({ nowPlaying: { coverArtUrl: '/cover-art/first' } });
     const { rerender } = render(
