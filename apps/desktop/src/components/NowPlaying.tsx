@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { NowPlayingMeta, PlaybackStatus } from '@o-control/shared';
 
 type Props = {
@@ -37,31 +37,30 @@ export function NowPlaying({ playback, nowPlaying, serviceUrl }: Props) {
 
   const hasCoverArt = !!nowPlaying.coverArtUrl;
   const coverArtSrc = hasCoverArt
-    ? `${serviceUrl}/cover-art?t=${encodeURIComponent(nowPlaying.title + nowPlaying.artist)}`
+    ? `${serviceUrl}/cover-art?t=${encodeURIComponent(
+        nowPlaying.title + nowPlaying.artist + nowPlaying.coverArtUrl,
+      )}`
     : null;
 
-  const [artFailed, setArtFailed] = useState(false);
-
-  useEffect(() => {
-    setArtFailed(false);
-  }, [coverArtSrc]);
-
-  const showCoverArt = coverArtSrc !== null && !artFailed;
+  const [failedArtSrc, setFailedArtSrc] = useState<string | null>(null);
+  const showCoverArt = coverArtSrc !== null && failedArtSrc !== coverArtSrc;
 
   return (
     <section className="now-playing" aria-label="Now playing">
       <div className="artwork-container" data-testid="artwork-frame">
         {showCoverArt ? (
           <img
+            key={coverArtSrc}
             src={coverArtSrc ?? undefined}
             alt="Cover artwork"
             className="artwork-image"
-            onError={() => setArtFailed(true)}
+            onError={() => setFailedArtSrc(coverArtSrc)}
           />
         ) : (
           <div
             className="artwork-placeholder"
             data-testid="artwork-placeholder"
+            role="img"
             aria-label="Artwork unavailable"
           >
             <span aria-hidden="true" />

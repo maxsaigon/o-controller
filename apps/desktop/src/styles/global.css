@@ -73,7 +73,7 @@ p {
 .status-header {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr) 42px;
-  align-items: start;
+  align-items: center;
   gap: 8px;
   min-height: 104px;
   padding: 14px 14px 10px;
@@ -88,13 +88,15 @@ p {
   text-align: center;
 }
 
-.header-center h1 {
+.header-center h1,
+.status-header > h1 {
   overflow: hidden;
   max-width: 100%;
   color: #f0ece6;
   font-size: 17px;
   font-weight: 520;
   line-height: 1.25;
+  text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -185,6 +187,14 @@ button:disabled {
   height: 6px;
   border-radius: 50%;
   background: currentColor;
+}
+
+.status-dot.connected {
+  color: #27a653;
+}
+
+.status-dot.offline {
+  color: #d74848;
 }
 
 .player-view {
