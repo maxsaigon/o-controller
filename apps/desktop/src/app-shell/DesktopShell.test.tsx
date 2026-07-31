@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import type { OControlState } from '@o-control/shared';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { receiverState } from '../test/fixtures';
 import { DesktopShell } from './DesktopShell';
@@ -61,7 +61,8 @@ describe('DesktopShell navigation', () => {
     mocks.api.error = null;
     mocks.api.connectionLabel = 'Connected';
     mocks.api.refresh.mockClear();
-    mocks.api.command.mockClear();
+    mocks.api.command.mockReset();
+    mocks.api.command.mockImplementation(async () => true);
     mocks.manager.status = {
       mode: 'external',
       url: 'http://localhost:8787',
@@ -136,6 +137,24 @@ describe('DesktopShell navigation', () => {
       { input: 'net' },
       'input:net',
     );
+  });
+
+  it('keeps Input open on failure and closes it after a successful retry', async () => {
+    mocks.api.command.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    render(<DesktopShell />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Input source/ }));
+
+    fireEvent.click(screen.getByRole('gridcell', { name: 'Network' }));
+    await waitFor(async () => {
+      await Promise.resolve();
+      expect(screen.getByLabelText('Input picker')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('gridcell', { name: 'Network' }));
+    await waitFor(() => {
+      expect(screen.queryByLabelText('Input picker')).not.toBeInTheDocument();
+    });
   });
 
   it('isolates a Library failure and returns to the player', () => {

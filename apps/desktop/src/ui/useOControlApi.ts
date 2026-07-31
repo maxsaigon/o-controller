@@ -33,6 +33,7 @@ export function useOControlApi(serviceUrl: string) {
   const [pendingCommand, setPendingCommand] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(true);
+  const delayedRefreshTimer = useRef<number | undefined>(undefined);
 
   const refresh = useCallback(async () => {
     try {
@@ -57,6 +58,10 @@ export function useOControlApi(serviceUrl: string) {
     void refresh();
     return () => {
       mounted.current = false;
+      if (delayedRefreshTimer.current !== undefined) {
+        window.clearTimeout(delayedRefreshTimer.current);
+        delayedRefreshTimer.current = undefined;
+      }
     };
   }, [refresh]);
 
@@ -121,7 +126,13 @@ export function useOControlApi(serviceUrl: string) {
         });
         await refresh();
         // Fallback refresh for delayed receiver response
-        setTimeout(() => refresh(), 1500);
+        if (delayedRefreshTimer.current !== undefined) {
+          window.clearTimeout(delayedRefreshTimer.current);
+        }
+        delayedRefreshTimer.current = window.setTimeout(() => {
+          delayedRefreshTimer.current = undefined;
+          void refresh();
+        }, 1500);
         return true;
       } catch (err) {
         setError(err instanceof Error ? err.message : `Command failed: ${label}`);

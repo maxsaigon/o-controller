@@ -54,8 +54,8 @@ export function DesktopShell() {
   }
 
   async function setInput(input: InputId) {
-    await api.command('/commands/input', { input }, `input:${input}`);
-    setActivePanel(null);
+    const succeeded = await api.command('/commands/input', { input }, `input:${input}`);
+    if (succeeded) setActivePanel(null);
   }
 
   async function runPreset(id: string) {
