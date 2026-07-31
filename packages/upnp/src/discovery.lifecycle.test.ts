@@ -76,3 +76,66 @@ test('scan observes a rejected SSDP startup promise', async () => {
 
   assert.equal(rejectionObserved, true);
 });
+
+test('late responses from a stopped client cannot enter a new lifecycle', async () => {
+  const originalFetch = globalThis.fetch;
+  const discovery = new DLNADiscovery();
+  const originalScan = discovery.scan;
+  let fetchCalls = 0;
+  let emitted = 0;
+
+  globalThis.fetch = (async () => {
+    fetchCalls += 1;
+    return new Response(`
+      <root>
+        <device>
+          <friendlyName>Lifecycle Server</friendlyName>
+          <serviceList>
+            <service>
+              <serviceType>urn:schemas-upnp-org:service:ContentDirectory:1</serviceType>
+              <controlURL>/content</controlURL>
+            </service>
+          </serviceList>
+        </device>
+      </root>
+    `);
+  }) as typeof fetch;
+  discovery.scan = () => {};
+  discovery.on('serverFound', () => {
+    emitted += 1;
+  });
+
+  try {
+    discovery.start();
+    const oldClient = (discovery as any).ssdpClient;
+    discovery.stop();
+
+    discovery.start();
+    const currentClient = (discovery as any).ssdpClient;
+    const response = {
+      LOCATION: 'http://192.0.2.20/description.xml',
+      USN: 'uuid:lifecycle-server',
+    };
+    const remote = { address: '192.0.2.20' };
+
+    oldClient.emit('response', response, 200, remote);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(
+      { fetchCalls, servers: discovery.getServers().length, emitted },
+      { fetchCalls: 0, servers: 0, emitted: 0 },
+    );
+
+    currentClient.emit('response', response, 200, remote);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(
+      { fetchCalls, servers: discovery.getServers().length, emitted },
+      { fetchCalls: 1, servers: 1, emitted: 1 },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    discovery.scan = originalScan;
+    discovery.stop();
+  }
+});

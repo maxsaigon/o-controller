@@ -87,15 +87,14 @@ export class DLNADiscovery extends EventEmitter {
     if (this.started) return;
     this.started = true;
     this.lifecycleController = new AbortController();
+    const lifecycleSignal = this.lifecycleController.signal;
 
     this.ssdpClient = new SSDPClient();
 
     this.ssdpClient.on('response', (headers: SsdpHeaders, _statusCode: number, rinfo: RemoteInfo) => {
       const location = String(headers.LOCATION ?? headers.location ?? '');
       const usn = String(headers.USN ?? headers.usn ?? '');
-      const signal = this.lifecycleController?.signal;
-      if (!signal) return;
-      void this.handleSSDPResponse(location, usn, rinfo.address, signal).catch(() => {});
+      void this.handleSSDPResponse(location, usn, rinfo.address, lifecycleSignal).catch(() => {});
     });
 
     // Initial scan
