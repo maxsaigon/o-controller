@@ -25,7 +25,7 @@ export function CommandBar({ state, receiverAvailable, activePanel, onOpenInput,
         <Wifi size={18} />
         <span>{inputLabel(state.input)}</span>
       </button>
- 
+
       <button
         className={`${activePanel === 'volume' ? 'active' : ''} ${state.muted ? 'muted' : ''}`}
         type="button"
@@ -36,16 +36,18 @@ export function CommandBar({ state, receiverAvailable, activePanel, onOpenInput,
         {state.muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
         <span>{state.muted ? 'Muted' : `Vol ${state.volume}`}</span>
       </button>
- 
-      <button type="button" title="Settings" onClick={onOpenSettings}>
-        <SlidersHorizontal size={18} />
-        <span>Settings</span>
-      </button>
- 
+
       <button className={activePanel === 'list' ? 'active' : ''} type="button" title="Music list" disabled={!receiverAvailable} onClick={onOpenList}>
         <ListMusic size={18} />
         <span>List</span>
       </button>
+
+      <button type="button" title="Settings" onClick={onOpenSettings}>
+        <SlidersHorizontal size={18} />
+        <span>Settings</span>
+      </button>
+
+
     </nav>
   );
 }

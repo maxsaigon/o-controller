@@ -18,9 +18,8 @@ export function inputLabel(input: OControlState['input']) {
 }
 
 export function StatusHeader({ state, serviceReachable, connectionLabel, pendingCommand, onContext, onPower }: Props) {
-  const statusClass = serviceReachable && state.connected ? 'connected' : serviceReachable ? 'warn' : 'offline';
   const powerPending = pendingCommand === 'power';
-  const receiverName = state.connected ? 'CR-N775' : 'O-Control';
+  const receiverName = state.connected ? 'Onkyo Hi-res' : 'O-Control';
 
   return (
     <header className="status-header">

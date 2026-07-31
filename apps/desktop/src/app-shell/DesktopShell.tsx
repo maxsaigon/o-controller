@@ -149,6 +149,7 @@ export function DesktopShell() {
                   state={state}
                   pendingCommand={api.pendingCommand}
                   command={api.command}
+                  serviceUrl={serviceUrl}
                 />
               ) : null}
 
