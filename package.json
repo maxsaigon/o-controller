@@ -11,7 +11,8 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "typecheck": "tsc --noEmit -p packages/shared/tsconfig.json && tsc --noEmit -p packages/eiscp/tsconfig.json && tsc --noEmit -p packages/upnp/tsconfig.json && tsc --noEmit -p packages/service/tsconfig.json && tsc --noEmit -p tools/mock-receiver/tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json && tsc --noEmit -p apps/desktop/tsconfig.json && tsc --noEmit -p apps/raycast/tsconfig.json",
-    "test": "npm run test --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present && npm run test:agent-runner",
+    "test:agent-runner": "node --test scripts/verify-agent.test.mjs",
     "test:integration": "node --import tsx --test tests/integration/service-mock.test.ts tests/integration/disconnect-reconnect.test.ts",
     "test:all": "npm test && npm run test:integration",
     "test:smoke": "node scripts/service-smoke.mjs",

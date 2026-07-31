@@ -1,7 +1,45 @@
 import { spawn } from 'node:child_process';
 import net from 'node:net';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export function createOutputTail(maxBytes = 64 * 1024) {
+  if (!Number.isInteger(maxBytes) || maxBytes <= 0) {
+    throw new Error('Output-tail capacity must be a positive integer');
+  }
+
+  let tail = Buffer.alloc(0);
+  let totalBytes = 0;
+
+  return {
+    append(chunk) {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+      totalBytes += bytes.length;
+      if (bytes.length >= maxBytes) {
+        tail = Buffer.from(bytes.subarray(bytes.length - maxBytes));
+        return;
+      }
+      tail = Buffer.concat([tail, bytes]);
+      if (tail.length > maxBytes) {
+        tail = tail.subarray(tail.length - maxBytes);
+      }
+    },
+    get byteLength() {
+      return tail.length;
+    },
+    text() {
+      return tail.toString('utf8');
+    },
+    diagnostics() {
+      const truncatedBytes = totalBytes - tail.length;
+      const prefix =
+        truncatedBytes > 0 ? `[truncated ${truncatedBytes} bytes]\n` : '';
+      return `${prefix}${tail.toString('utf8').trim() || '(none)'}`;
+    },
+  };
+}
 
 async function reservePort() {
   const server = net.createServer();
@@ -83,7 +121,9 @@ async function waitForHealth(url, timeoutMs, status) {
 
   assertChildRunning(status);
   const detail = lastError instanceof Error ? `: ${lastError.message}` : '';
-  throw new Error(`Service did not become healthy within ${timeoutMs}ms${detail}`);
+  throw new Error(
+    `Service did not become healthy within ${timeoutMs}ms${detail}`,
+  );
 }
 
 async function waitForVolume(url, expectedVolume, timeoutMs, status) {
@@ -96,7 +136,9 @@ async function waitForVolume(url, expectedVolume, timeoutMs, status) {
       signal: AbortSignal.timeout(Math.max(1, Math.min(500, remainingMs))),
     });
     if (!response.ok) {
-      throw new Error(`/state returned ${response.status} while confirming volume`);
+      throw new Error(
+        `/state returned ${response.status} while confirming volume`,
+      );
     }
     const state = await response.json();
     if (state.volume === expectedVolume) {
@@ -105,7 +147,9 @@ async function waitForVolume(url, expectedVolume, timeoutMs, status) {
     await sleep(Math.min(25, Math.max(0, deadline - Date.now())));
   }
 
-  throw new Error(`Volume did not become ${expectedVolume} within ${timeoutMs}ms`);
+  throw new Error(
+    `Volume did not become ${expectedVolume} within ${timeoutMs}ms`,
+  );
 }
 
 async function terminateChild(child) {
@@ -128,96 +172,108 @@ async function terminateChild(child) {
   await waitForExit(child, 2000);
 }
 
-const port = await reservePort();
-const serviceUrl = `http://127.0.0.1:${port}`;
-let output = '';
-const status = {
-  error: null,
-  exited: false,
-  code: null,
-  signal: null,
-};
-const child = spawn(process.execPath, ['packages/service/dist/index.js'], {
-  cwd: process.cwd(),
-  env: {
-    ...process.env,
-    MOCK_MODE: 'true',
-    O_CONTROL_PORT: String(port),
-    LOG_LEVEL: 'silent',
-  },
-  stdio: ['ignore', 'pipe', 'pipe'],
-});
-
-child.stdout.on('data', (chunk) => {
-  output += chunk;
-});
-child.stderr.on('data', (chunk) => {
-  output += chunk;
-});
-child.once('error', (error) => {
-  status.error = error;
-});
-child.once('exit', (code, signal) => {
-  status.exited = true;
-  status.code = code;
-  status.signal = signal;
-});
-
-try {
-  const health = await waitForHealth(serviceUrl, 5000, status);
-  if (health.status !== 'ok' || health.mockMode !== true) {
-    throw new Error(`Unexpected health response: ${JSON.stringify(health)}`);
-  }
-
-  assertChildRunning(status);
-  const stateResponse = await fetch(`${serviceUrl}/state`, {
-    signal: AbortSignal.timeout(2000),
+export async function runServiceSmoke() {
+  const port = await reservePort();
+  const serviceUrl = `http://127.0.0.1:${port}`;
+  const output = createOutputTail();
+  const status = {
+    error: null,
+    exited: false,
+    code: null,
+    signal: null,
+  };
+  const child = spawn(process.execPath, ['packages/service/dist/index.js'], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      MOCK_MODE: 'true',
+      O_CONTROL_PORT: String(port),
+      LOG_LEVEL: 'silent',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
   });
-  if (!stateResponse.ok) {
-    throw new Error(`/state returned ${stateResponse.status}`);
-  }
 
-  assertChildRunning(status);
-  const commandResponse = await fetch(`${serviceUrl}/commands/volume`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ value: 22 }),
-    signal: AbortSignal.timeout(2000),
+  child.stdout.on('data', (chunk) => {
+    output.append(chunk);
   });
-  const commandText = await commandResponse.text();
-  let command;
+  child.stderr.on('data', (chunk) => {
+    output.append(chunk);
+  });
+  child.once('error', (error) => {
+    status.error = error;
+  });
+  child.once('exit', (code, signal) => {
+    status.exited = true;
+    status.code = code;
+    status.signal = signal;
+  });
+
   try {
-    command = JSON.parse(commandText);
-  } catch {
-    throw new Error(`Volume command returned invalid JSON: ${commandText}`);
-  }
-  if (!commandResponse.ok || command.success !== true) {
+    const health = await waitForHealth(serviceUrl, 5000, status);
+    if (health.status !== 'ok' || health.mockMode !== true) {
+      throw new Error(`Unexpected health response: ${JSON.stringify(health)}`);
+    }
+
+    assertChildRunning(status);
+    const stateResponse = await fetch(`${serviceUrl}/state`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!stateResponse.ok) {
+      throw new Error(`/state returned ${stateResponse.status}`);
+    }
+
+    assertChildRunning(status);
+    const commandResponse = await fetch(`${serviceUrl}/commands/volume`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ value: 22 }),
+      signal: AbortSignal.timeout(2000),
+    });
+    const commandText = await commandResponse.text();
+    let command;
+    try {
+      command = JSON.parse(commandText);
+    } catch {
+      throw new Error(`Volume command returned invalid JSON: ${commandText}`);
+    }
+    if (!commandResponse.ok || command.success !== true) {
+      throw new Error(
+        `Volume command failed (status=${commandResponse.status}): ${JSON.stringify(command)}`,
+      );
+    }
+
+    await waitForVolume(serviceUrl, 22, 1000, status);
+    child.kill('SIGTERM');
+    const { code, signal } = await waitForExit(child, 3000);
+    if (code !== 0) {
+      throw new Error(`Service exited with code ${code} (signal=${signal})`);
+    }
+
+    console.log('service smoke: PASS');
+  } catch (error) {
+    let cleanupError = null;
+    try {
+      await terminateChild(child);
+    } catch (terminationError) {
+      cleanupError = terminationError;
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    const cleanupDetail =
+      cleanupError instanceof Error
+        ? `\nCleanup error: ${cleanupError.message}`
+        : '';
     throw new Error(
-      `Volume command failed (status=${commandResponse.status}): ${JSON.stringify(command)}`,
+      `${message}${cleanupDetail}\nCaptured service output:\n${output.diagnostics()}`,
+      { cause: error },
     );
   }
+}
 
-  await waitForVolume(serviceUrl, 22, 1000, status);
-  child.kill('SIGTERM');
-  const { code, signal } = await waitForExit(child, 3000);
-  if (code !== 0) {
-    throw new Error(`Service exited with code ${code} (signal=${signal})`);
-  }
+const isMain =
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 
-  console.log('service smoke: PASS');
-} catch (error) {
-  let cleanupError = null;
-  try {
-    await terminateChild(child);
-  } catch (terminationError) {
-    cleanupError = terminationError;
-  }
-
-  const message = error instanceof Error ? error.message : String(error);
-  const cleanupDetail =
-    cleanupError instanceof Error ? `\nCleanup error: ${cleanupError.message}` : '';
-  throw new Error(
-    `${message}${cleanupDetail}\nCaptured service output:\n${output.trim() || '(none)'}`,
-    { cause: error },
-  );
+if (isMain) {
+  await runServiceSmoke();
 }
