@@ -164,7 +164,10 @@ export class DLNADiscovery extends EventEmitter {
  * Tries common Onkyo UPnP description endpoints until one succeeds.
  * Returns the absolute control URL or null if not found.
  */
-export async function discoverReceiverAVTransport(receiverHost: string): Promise<string | null> {
+export async function discoverReceiverAVTransport(
+  receiverHost: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
   // Known Onkyo UPnP description endpoints (discovered via SSDP)
   const descriptionUrls = [
     `http://${receiverHost}:8888/upnp_descriptor_0`,
@@ -177,7 +180,10 @@ export async function discoverReceiverAVTransport(receiverHost: string): Promise
 
   for (const descUrl of descriptionUrls) {
     try {
-      const res = await fetch(descUrl, { signal: AbortSignal.timeout(3000) });
+      const requestSignal = signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(3000)])
+        : AbortSignal.timeout(3000);
+      const res = await fetch(descUrl, { signal: requestSignal });
       if (!res.ok) continue;
       const xml = await res.text();
 

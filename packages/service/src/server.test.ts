@@ -27,6 +27,19 @@ after(async () => {
   await app.close();
 });
 
+describe('DLNA response contracts', () => {
+  it('returns an explicit success boolean for missing servers', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/dlna/browse',
+      payload: { serverId: 'missing', objectId: '0' },
+    });
+
+    assert.equal(res.statusCode, 404);
+    assert.equal(JSON.parse(res.payload).success, false);
+  });
+});
+
 // GET /health
 
 describe('GET /health', () => {
