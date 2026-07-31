@@ -65,8 +65,12 @@ export function DesktopShell() {
   useEffect(() => {
     let cancelled = false;
     void registerDesktopShortcuts({
-      volumeUp: () => setVolume('up'),
-      volumeDown: () => setVolume('down'),
+      volumeUp: async () => {
+        await setVolume('up');
+      },
+      volumeDown: async () => {
+        await setVolume('down');
+      },
       mute: runMute,
       playPause: () => runPlayback(api.state.playback === 'playing' ? 'pause' : 'play'),
       togglePopover: toggleNativePopover,
@@ -120,38 +124,40 @@ export function DesktopShell() {
               {api.error ? <p className="inline-error">{api.error}</p> : null}
             </div>
 
-            <div className="rail-dock">
-              {activePanel === 'input' ? (
-                <InputSelector
-                  value={state.input}
-                  disabled={!receiverAvailable}
-                  pendingCommand={api.pendingCommand}
-                  onChange={setInput}
-                />
-              ) : null}
+            {activePanel ? (
+              <div className="panel-dock">
+                {activePanel === 'input' ? (
+                  <InputSelector
+                    value={state.input}
+                    disabled={!receiverAvailable}
+                    pendingCommand={api.pendingCommand}
+                    onChange={setInput}
+                  />
+                ) : null}
 
-              {activePanel === 'volume' ? (
-                <VolumeControl
-                  volume={state.volume}
-                  disabled={!receiverAvailable}
-                  muted={state.muted}
-                  pending={(api.pendingCommand?.startsWith('volume') ?? false) || api.pendingCommand === 'mute'}
-                  onStepDown={() => setVolume('down')}
-                  onStepUp={() => setVolume('up')}
-                  onCommit={setVolume}
-                  onMute={runMute}
-                />
-              ) : null}
+                {activePanel === 'volume' ? (
+                  <VolumeControl
+                    volume={state.volume}
+                    disabled={!receiverAvailable}
+                    muted={state.muted}
+                    pending={(api.pendingCommand?.startsWith('volume') ?? false) || api.pendingCommand === 'mute'}
+                    onStepDown={() => setVolume('down')}
+                    onStepUp={() => setVolume('up')}
+                    onCommit={setVolume}
+                    onMute={runMute}
+                  />
+                ) : null}
 
-              {activePanel === 'list' ? (
-                <NetList
-                  state={state}
-                  pendingCommand={api.pendingCommand}
-                  command={api.command}
-                  serviceUrl={serviceUrl}
-                />
-              ) : null}
-            </div>
+                {activePanel === 'list' ? (
+                  <NetList
+                    state={state}
+                    pendingCommand={api.pendingCommand}
+                    command={api.command}
+                    serviceUrl={serviceUrl}
+                  />
+                ) : null}
+              </div>
+            ) : null}
           </>
         )}
 

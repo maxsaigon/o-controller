@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import type { OControlState } from '@o-control/shared';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -21,12 +22,20 @@ const mocks = vi.hoisted(() => ({
     updateConfig: vi.fn(),
     isTauri: false,
   },
+  netListProps: null as null | {
+    state: OControlState;
+    pendingCommand: string | null;
+    command: unknown;
+    serviceUrl: string;
+  },
   shortcuts: {
     register: vi.fn(async () => []),
     unregister: vi.fn(async () => undefined),
     toggle: vi.fn(),
   },
 }));
+
+const globalStyles = readFileSync('src/styles/global.css', 'utf8');
 
 vi.mock('../ui/useOControlApi', () => ({ useOControlApi: () => mocks.api }));
 vi.mock('../ui/useServiceManager', () => ({ useServiceManager: () => mocks.manager }));
@@ -37,7 +46,10 @@ vi.mock('../native/shortcuts', () => ({
   toggleNativePopover: mocks.shortcuts.toggle,
 }));
 vi.mock('../components/NetList', () => ({
-  NetList: () => <section aria-label="Library">Library unavailable</section>,
+  NetList: (props: NonNullable<typeof mocks.netListProps>) => {
+    mocks.netListProps = props;
+    return <section aria-label="Library">Library unavailable</section>;
+  },
 }));
 
 describe('DesktopShell navigation', () => {
@@ -59,6 +71,7 @@ describe('DesktopShell navigation', () => {
     mocks.manager.config = { serviceMode: 'external' };
     mocks.manager.updateConfig.mockClear();
     mocks.manager.isTauri = false;
+    mocks.netListProps = null;
     mocks.shortcuts.register.mockClear();
     mocks.shortcuts.unregister.mockClear();
     mocks.shortcuts.toggle.mockClear();
@@ -73,10 +86,37 @@ describe('DesktopShell navigation', () => {
     expect(screen.queryByText('Network')).not.toBeInTheDocument();
   });
 
+  it('exposes the active destination and current volume to assistive technology', () => {
+    render(<DesktopShell />);
+
+    const remote = screen.getByRole('button', { name: 'Remote' });
+    const volume = screen.getByRole('button', { name: 'Volume' });
+    const library = screen.getByRole('button', { name: 'Library' });
+    const settings = screen.getByRole('button', { name: 'Settings' });
+    expect(remote).toHaveAttribute('aria-pressed', 'true');
+    expect(remote).toHaveClass('active');
+    expect(volume).toHaveAttribute('aria-pressed', 'false');
+    expect(volume).not.toHaveClass('active');
+    expect(volume).toHaveAccessibleDescription('Vol 22');
+    expect(library).toHaveAttribute('aria-pressed', 'false');
+    expect(settings).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('describes muted volume without changing the stable navigation name', () => {
+    mocks.api.state = receiverState({ muted: true });
+    render(<DesktopShell />);
+
+    expect(screen.getByRole('button', { name: 'Volume' })).toHaveAccessibleDescription('Muted');
+  });
+
   it('opens Volume and returns to Remote', () => {
     render(<DesktopShell />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Volume' }));
+    const volume = screen.getByRole('button', { name: 'Volume' });
+    fireEvent.click(volume);
+    expect(volume).toHaveAttribute('aria-pressed', 'true');
+    expect(volume).toHaveClass('active');
+    expect(screen.getByRole('button', { name: 'Remote' })).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByRole('region', { name: 'Volume' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Remote' }));
     expect(screen.queryByRole('region', { name: 'Volume' })).not.toBeInTheDocument();
@@ -86,6 +126,8 @@ describe('DesktopShell navigation', () => {
     render(<DesktopShell />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(screen.getByRole('button', { name: 'Settings' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Settings' })).toHaveClass('active');
     fireEvent.click(screen.getByRole('button', { name: /^Input source/ }));
     expect(screen.getByLabelText('Input picker')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('gridcell', { name: 'Network' }));
@@ -97,12 +139,36 @@ describe('DesktopShell navigation', () => {
   });
 
   it('isolates a Library failure and returns to the player', () => {
+    mocks.api.pendingCommand = 'list:query';
     render(<DesktopShell />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Library' }));
+    const library = screen.getByRole('button', { name: 'Library' });
+    fireEvent.click(library);
+    expect(library).toHaveAttribute('aria-pressed', 'true');
+    expect(library).toHaveClass('active');
     expect(screen.getByRole('region', { name: 'Library' })).toHaveTextContent('Library unavailable');
+    expect(mocks.netListProps).toEqual({
+      state: mocks.api.state,
+      pendingCommand: 'list:query',
+      command: mocks.api.command,
+      serviceUrl: 'http://localhost:8787',
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Remote' }));
+    expect(screen.queryByRole('region', { name: 'Library' })).not.toBeInTheDocument();
     expect(screen.getByLabelText('Now playing')).toBeInTheDocument();
+  });
+
+  it('uses a separate panel dock without duplicating the command rail dock', () => {
+    const { container } = render(<DesktopShell />);
+
+    expect(container.querySelectorAll('.panel-dock')).toHaveLength(0);
+    expect(container.querySelectorAll('.rail-dock')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Volume' }));
+    expect(container.querySelectorAll('.panel-dock')).toHaveLength(1);
+    expect(container.querySelectorAll('.rail-dock')).toHaveLength(1);
+    expect(globalStyles).toMatch(
+      /\.popover\.panel-active\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) auto auto;/,
+    );
   });
 
   it('disables receiver actions offline but keeps Settings enabled', () => {

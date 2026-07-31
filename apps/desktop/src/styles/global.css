@@ -70,6 +70,10 @@ p {
   box-shadow: 0 22px 56px rgba(0, 0, 0, 0.5);
 }
 
+.popover.panel-active {
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+}
+
 .status-header {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr) 42px;
@@ -348,6 +352,10 @@ button:disabled {
 .panel-active .primary-play {
   width: 42px;
   min-height: 42px;
+}
+
+.panel-dock {
+  min-height: 0;
 }
 
 .rail-dock {

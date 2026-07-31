@@ -5,7 +5,7 @@ import type { OControlState } from '@o-control/shared';
 interface NetListProps {
   state: OControlState;
   pendingCommand: string | null;
-  command: (path: string, body: unknown, label: string) => Promise<void>;
+  command: (path: string, body: unknown, label: string) => Promise<boolean>;
   serviceUrl: string;
 }
 

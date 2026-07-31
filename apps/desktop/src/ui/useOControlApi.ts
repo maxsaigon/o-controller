@@ -111,7 +111,7 @@ export function useOControlApi(serviceUrl: string) {
   }, [serviceUrl]);
 
   const command = useCallback(
-    async (path: string, body: unknown, label: string) => {
+    async (path: string, body: unknown, label: string): Promise<boolean> => {
       setPendingCommand(label);
       setError(null);
       try {
@@ -122,8 +122,10 @@ export function useOControlApi(serviceUrl: string) {
         await refresh();
         // Fallback refresh for delayed receiver response
         setTimeout(() => refresh(), 1500);
+        return true;
       } catch (err) {
         setError(err instanceof Error ? err.message : `Command failed: ${label}`);
+        return false;
       } finally {
         setPendingCommand(null);
       }
