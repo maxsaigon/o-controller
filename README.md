@@ -28,7 +28,11 @@ Verified on 2026-05-15:
 - Local service sidecar startup path.
 - Global shortcut registration path.
 
-The receiver also emits NET/USB list events such as `NLS` and album-art URL events such as `NJA`. Those are logged for future investigation but are not part of the current product.
+The current product also parses receiver NET/USB list events (`NLT`/`NLS`) for
+the Library UI. Album artwork is shown in the central now-playing view from
+receiver `NJA` URL/embedded data or the receiver `album_art.cgi` fallback when
+available. These media features depend on the active source and receiver/media
+server metadata, so support can vary by library.
 
 ## Product Architecture
 
@@ -105,6 +109,8 @@ The desktop app supports:
 - Mute toggle.
 - Input selector for CD, NET, USB, Bluetooth, Line, and Tuner.
 - Playback controls: play, pause, stop, previous, next.
+- Library browsing through receiver NET/USB lists and discovered DLNA servers.
+- Central now-playing artwork with a stable fallback when artwork is unavailable.
 - Preset buttons.
 - Now-playing display with safe fallback for missing metadata.
 - Native global shortcuts for volume, mute, play/pause, and show/hide.
@@ -136,6 +142,10 @@ To run the service without a receiver:
 ```bash
 MOCK_MODE=true npm run dev:service
 ```
+
+The service API binds to `127.0.0.1` by default. A deliberate network service
+deployment can opt in to another interface, for example
+`O_CONTROL_HOST=0.0.0.0`; do not expose that listener to an untrusted network.
 
 To run the browser preview of the desktop UI:
 
@@ -235,12 +245,13 @@ In scope now:
 - Reliable local macOS control of one Onkyo CR-N775 / N775.
 - Static receiver IP configuration.
 - Core remote-control actions.
-- Basic now-playing state when the receiver provides it.
+- Now-playing metadata and artwork when the active source provides them.
+- Receiver NET/USB list navigation plus DLNA discovery, browsing, and playback.
 
 Out of scope for the current product:
 
-- Full NAS/USB browser.
-- Album art.
+- Uniform library navigation across every NAS, USB device, and media server.
+- Guaranteed metadata or artwork for sources that do not provide it.
 - Multi-zone control.
 - UDP discovery.
 - macOS Control Center widgets.
