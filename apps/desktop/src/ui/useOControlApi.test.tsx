@@ -883,4 +883,24 @@ describe('useOControlApi', () => {
     expect(result.current.error).toBeNull();
     unmount();
   });
+
+  it('returns raw command failures without publishing a global player error', async () => {
+    const { result, unmount } = renderHook(() => useOControlApi('http://localhost:8787'));
+    await waitFor(() => expect(result.current.serviceReachable).toBe(true));
+
+    fetchMock.mockResolvedValueOnce(jsonResponse('OSD command rejected', false));
+
+    let rawResult: Awaited<ReturnType<typeof result.current.rawCommand>> | undefined;
+    await act(async () => {
+      rawResult = await result.current.rawCommand(
+        '/commands/list/action',
+        { action: 'enter' },
+      );
+    });
+
+    expect(rawResult).toEqual({ ok: false, error: 'OSD command rejected' });
+    expect(result.current.error).toBeNull();
+    expect(result.current.pendingCommand).toBeNull();
+    unmount();
+  });
 });

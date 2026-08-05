@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Folder, Music, Play, Plus, ChevronLeft, ChevronUp, ChevronDown, Loader2, RefreshCw, Server, ListMusic } from 'lucide-react';
 import type { OControlState } from '@o-control/shared';
+import type { RawCommandResult } from '../ui/useOControlApi';
 
 interface NetListProps {
   state: OControlState;
   pendingCommand: string | null;
   command: (path: string, body: unknown, label: string) => Promise<boolean>;
+  rawCommand: (path: string, body: unknown, signal?: AbortSignal) => Promise<RawCommandResult>;
   serviceUrl: string;
 }
 
@@ -39,11 +41,28 @@ interface DLNAItem {
 
 type DLNABrowseElement = DLNAContainer | DLNAItem;
 
-export const NetList: React.FC<NetListProps> = ({ state, pendingCommand, command, serviceUrl }) => {
+export const NetList: React.FC<NetListProps> = ({
+  state,
+  pendingCommand,
+  command,
+  rawCommand,
+  serviceUrl,
+}) => {
   const isNetOrUsb = state.input === 'net' || state.input === 'usb';
   const { title: osdTitle, items: osdItems, cursor: osdCursor } = state.netList;
   const listRef = useRef<HTMLDivElement>(null);
   const lastScrollTime = useRef<number>(0);
+  const mounted = useRef(false);
+  const lifecycleGeneration = useRef(0);
+  const requestControllers = useRef(new Set<AbortController>());
+  const scanTimer = useRef<number | null>(null);
+  const serverGeneration = useRef(0);
+  const scanGeneration = useRef(0);
+  const browseGeneration = useRef(0);
+  const playGeneration = useRef(0);
+  const osdGeneration = useRef(0);
+  const browseController = useRef<AbortController | null>(null);
+  const playController = useRef<AbortController | null>(null);
 
   // ── DLNA State ────────────────────────────────────────────────
   const [mode, setMode] = useState<'dlna' | 'osd'>(() => {
@@ -59,8 +78,61 @@ export const NetList: React.FC<NetListProps> = ({ state, pendingCommand, command
   const [loadingServers, setLoadingServers] = useState(false);
   const [loadingContent, setLoadingContent] = useState(false);
   const [scanning, setScanning] = useState(false);
-  const [dlnaError, setDlnaError] = useState<string | null>(null);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
   const [playingItemUrl, setPlayingItemUrl] = useState<string | null>(null);
+  const [osdPending, setOsdPending] = useState(false);
+
+  const trackController = useCallback(() => {
+    const controller = new AbortController();
+    requestControllers.current.add(controller);
+    return controller;
+  }, []);
+
+  const releaseController = useCallback((controller: AbortController) => {
+    requestControllers.current.delete(controller);
+  }, []);
+
+  const cancelRequests = useCallback(() => {
+    if (scanTimer.current !== null) {
+      window.clearTimeout(scanTimer.current);
+      scanTimer.current = null;
+    }
+    for (const controller of requestControllers.current) controller.abort();
+    requestControllers.current.clear();
+    browseController.current = null;
+    playController.current = null;
+    serverGeneration.current += 1;
+    scanGeneration.current += 1;
+    browseGeneration.current += 1;
+    playGeneration.current += 1;
+    osdGeneration.current += 1;
+  }, []);
+
+  useEffect(() => {
+    const lifecycle = lifecycleGeneration.current + 1;
+    lifecycleGeneration.current = lifecycle;
+    mounted.current = true;
+    cancelRequests();
+    setServers([]);
+    setSelectedServer(null);
+    setDlnaItems([]);
+    setFolderHistory(['0']);
+    setFolderTitleHistory(['Root']);
+    setLoadingServers(false);
+    setLoadingContent(false);
+    setScanning(false);
+    setPlayingItemUrl(null);
+    setOsdPending(false);
+    setLibraryError(null);
+
+    return () => {
+      if (lifecycleGeneration.current === lifecycle) {
+        mounted.current = false;
+        lifecycleGeneration.current += 1;
+        cancelRequests();
+      }
+    };
+  }, [cancelRequests, serviceUrl]);
 
   // Persistence of mode
   useEffect(() => {
@@ -69,62 +141,129 @@ export const NetList: React.FC<NetListProps> = ({ state, pendingCommand, command
 
   // Fetch DLNA Servers
   const fetchServers = useCallback(async () => {
+    const lifecycle = lifecycleGeneration.current;
+    const request = serverGeneration.current + 1;
+    serverGeneration.current = request;
+    const controller = trackController();
+    const isCurrent = () => (
+      mounted.current
+      && lifecycleGeneration.current === lifecycle
+      && serverGeneration.current === request
+      && !controller.signal.aborted
+    );
     setLoadingServers(true);
-    setDlnaError(null);
+    setLibraryError(null);
     try {
-      const res = await fetch(`${serviceUrl}/dlna/servers`);
+      const res = await fetch(`${serviceUrl}/dlna/servers`, { signal: controller.signal });
       if (!res.ok) throw new Error('Failed to load media servers');
       const data = await res.json() as { servers: DLNAServer[] };
-      setServers(data.servers);
+      if (isCurrent()) setServers(data.servers);
     } catch (err) {
-      setDlnaError(err instanceof Error ? err.message : 'Failed to query DLNA servers');
+      if (isCurrent()) {
+        setLibraryError(err instanceof Error ? err.message : 'Failed to query DLNA servers');
+      }
     } finally {
-      setLoadingServers(false);
+      releaseController(controller);
+      if (isCurrent()) setLoadingServers(false);
     }
-  }, [serviceUrl]);
+  }, [releaseController, serviceUrl, trackController]);
 
   // Scan for DLNA Servers
   const scanServers = async () => {
+    const lifecycle = lifecycleGeneration.current;
+    const request = scanGeneration.current + 1;
+    scanGeneration.current = request;
+    const controller = trackController();
+    const isCurrent = () => (
+      mounted.current
+      && lifecycleGeneration.current === lifecycle
+      && scanGeneration.current === request
+      && !controller.signal.aborted
+    );
     setScanning(true);
-    setDlnaError(null);
+    setLibraryError(null);
     try {
-      const res = await fetch(`${serviceUrl}/dlna/scan`, { method: 'POST' });
+      const res = await fetch(`${serviceUrl}/dlna/scan`, {
+        method: 'POST',
+        signal: controller.signal,
+      });
       if (!res.ok) throw new Error('Failed to trigger scan');
+      if (!isCurrent()) return;
       // Wait a moment for SSDP to discover and write to database, then fetch
-      setTimeout(() => {
-        void fetchServers();
-        setScanning(false);
+      scanTimer.current = window.setTimeout(() => {
+        scanTimer.current = null;
+        void fetchServers().finally(() => {
+          if (isCurrent()) setScanning(false);
+        });
       }, 1500);
     } catch (err) {
-      setDlnaError(err instanceof Error ? err.message : 'Scan trigger failed');
-      setScanning(false);
+      if (isCurrent()) {
+        setLibraryError(err instanceof Error ? err.message : 'Scan trigger failed');
+        setScanning(false);
+      }
+    } finally {
+      releaseController(controller);
     }
   };
 
   // Browse a DLNA Folder
   const browseFolder = useCallback(async (serverId: string, objectId: string) => {
+    browseController.current?.abort();
+    playController.current?.abort();
+    playController.current = null;
+    playGeneration.current += 1;
+    setPlayingItemUrl(null);
+    const lifecycle = lifecycleGeneration.current;
+    const request = browseGeneration.current + 1;
+    browseGeneration.current = request;
+    const controller = trackController();
+    browseController.current = controller;
+    const isCurrent = () => (
+      mounted.current
+      && lifecycleGeneration.current === lifecycle
+      && browseGeneration.current === request
+      && !controller.signal.aborted
+    );
     setLoadingContent(true);
-    setDlnaError(null);
+    setLibraryError(null);
     try {
       const res = await fetch(`${serviceUrl}/dlna/browse`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ serverId, objectId }),
+        signal: controller.signal,
       });
       if (!res.ok) throw new Error('Failed to browse folder contents');
       const data = await res.json() as { items: DLNABrowseElement[] };
-      setDlnaItems(data.items);
+      if (isCurrent()) setDlnaItems(data.items);
     } catch (err) {
-      setDlnaError(err instanceof Error ? err.message : 'Folder query failed');
+      if (isCurrent()) {
+        setLibraryError(err instanceof Error ? err.message : 'Folder query failed');
+      }
     } finally {
-      setLoadingContent(false);
+      releaseController(controller);
+      if (browseController.current === controller) browseController.current = null;
+      if (isCurrent()) setLoadingContent(false);
     }
-  }, [serviceUrl]);
+  }, [releaseController, serviceUrl, trackController]);
 
   // Trigger Play via DLNA AVTransport
   const playTrack = async (item: DLNAItem) => {
     if (!item.resourceUrl) return;
+    playController.current?.abort();
+    const lifecycle = lifecycleGeneration.current;
+    const request = playGeneration.current + 1;
+    playGeneration.current = request;
+    const controller = trackController();
+    playController.current = controller;
+    const isCurrent = () => (
+      mounted.current
+      && lifecycleGeneration.current === lifecycle
+      && playGeneration.current === request
+      && !controller.signal.aborted
+    );
     setPlayingItemUrl(item.resourceUrl);
+    setLibraryError(null);
     try {
       const res = await fetch(`${serviceUrl}/dlna/play`, {
         method: 'POST',
@@ -135,19 +274,27 @@ export const NetList: React.FC<NetListProps> = ({ state, pendingCommand, command
           artist: item.artist,
           mimeType: item.mimeType,
         }),
+        signal: controller.signal,
       });
       if (!res.ok) {
         throw new Error('AVTransport play failed. Make sure receiver is on Network input.');
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Could not play selected track.');
+      if (isCurrent()) {
+        setLibraryError(err instanceof Error ? err.message : 'Could not play selected track.');
+      }
     } finally {
-      setPlayingItemUrl(null);
+      releaseController(controller);
+      if (playController.current === controller) playController.current = null;
+      if (isCurrent()) setPlayingItemUrl(null);
     }
   };
 
   // ── DLNA Navigation Actions ──────────────────────────────────
   const handleSelectServer = (server: DLNAServer) => {
+    cancelRequests();
+    setLoadingServers(false);
+    setScanning(false);
     setSelectedServer(server);
     setFolderHistory(['0']);
     setFolderTitleHistory(['Root']);
@@ -170,6 +317,9 @@ export const NetList: React.FC<NetListProps> = ({ state, pendingCommand, command
       setFolderTitleHistory(nextTitleHistory);
       void browseFolder(selectedServer!.id, nextHistory[nextHistory.length - 1]);
     } else {
+      cancelRequests();
+      setLoadingContent(false);
+      setPlayingItemUrl(null);
       setSelectedServer(null);
       setDlnaItems([]);
     }
@@ -182,6 +332,39 @@ export const NetList: React.FC<NetListProps> = ({ state, pendingCommand, command
     }
   }, [isNetOrUsb, mode, fetchServers]);
 
+  useEffect(() => {
+    if (isNetOrUsb) return;
+    cancelRequests();
+    setLoadingServers(false);
+    setLoadingContent(false);
+    setScanning(false);
+    setPlayingItemUrl(null);
+    setOsdPending(false);
+  }, [cancelRequests, isNetOrUsb]);
+
+  const runOsdCommand = useCallback(async (path: string, body: unknown) => {
+    const lifecycle = lifecycleGeneration.current;
+    const request = osdGeneration.current + 1;
+    osdGeneration.current = request;
+    const controller = trackController();
+    const isCurrent = () => (
+      mounted.current
+      && lifecycleGeneration.current === lifecycle
+      && osdGeneration.current === request
+      && !controller.signal.aborted
+    );
+    setLibraryError(null);
+    setOsdPending(true);
+    try {
+      const result = await rawCommand(path, body, controller.signal);
+      if (isCurrent() && !result.ok) setLibraryError(result.error);
+      return result.ok;
+    } finally {
+      releaseController(controller);
+      if (isCurrent()) setOsdPending(false);
+    }
+  }, [rawCommand, releaseController, trackController]);
+
   // ── OSD Mode Event Handlers ──────────────────────────────────
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     if (mode !== 'osd' || !isNetOrUsb || osdItems.length === 0) return;
@@ -191,18 +374,18 @@ export const NetList: React.FC<NetListProps> = ({ state, pendingCommand, command
 
     if (e.deltaY > 0) {
       lastScrollTime.current = now;
-      void command('/commands/list/action', { action: 'down' }, 'Scrolling down');
+      void runOsdCommand('/commands/list/action', { action: 'down' });
     } else if (e.deltaY < 0) {
       lastScrollTime.current = now;
-      void command('/commands/list/action', { action: 'up' }, 'Scrolling up');
+      void runOsdCommand('/commands/list/action', { action: 'up' });
     }
   };
 
   useEffect(() => {
     if (mode === 'osd' && isNetOrUsb && osdItems.length === 0) {
-      void command('/commands/list/query', {}, 'Querying list');
+      void runOsdCommand('/commands/list/query', {});
     }
-  }, [mode, isNetOrUsb, osdItems.length, command]);
+  }, [mode, isNetOrUsb, osdItems.length, runOsdCommand]);
 
   useEffect(() => {
     if (mode !== 'osd' || !isNetOrUsb) return;
@@ -217,18 +400,18 @@ export const NetList: React.FC<NetListProps> = ({ state, pendingCommand, command
 
       if (e.key === 'ArrowUp') {
         e.preventDefault();
-        void command('/commands/list/action', { action: 'up' }, 'Scrolling up');
+        void runOsdCommand('/commands/list/action', { action: 'up' });
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
-        void command('/commands/list/action', { action: 'down' }, 'Scrolling down');
+        void runOsdCommand('/commands/list/action', { action: 'down' });
       } else if (e.key === 'Enter') {
         e.preventDefault();
         if (osdCursor >= 0 && osdCursor < osdItems.length) {
-          void command('/commands/list/action', { action: 'enter' }, 'Entering selected item');
+          void runOsdCommand('/commands/list/action', { action: 'enter' });
         }
       } else if (e.key === 'Backspace' || e.key === 'ArrowLeft') {
         e.preventDefault();
-        void command('/commands/list/action', { action: 'back' }, 'Navigating back');
+        void runOsdCommand('/commands/list/action', { action: 'back' });
       }
     };
 
@@ -236,7 +419,7 @@ export const NetList: React.FC<NetListProps> = ({ state, pendingCommand, command
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [mode, isNetOrUsb, osdItems, osdCursor, command]);
+  }, [mode, isNetOrUsb, osdItems, osdCursor, runOsdCommand]);
 
   useEffect(() => {
     if (mode === 'osd' && osdCursor >= 0 && listRef.current) {
@@ -253,11 +436,23 @@ export const NetList: React.FC<NetListProps> = ({ state, pendingCommand, command
   };
 
   const handleOsdBack = () => {
-    void command('/commands/list/action', { action: 'back' }, 'Navigating back');
+    void runOsdCommand('/commands/list/action', { action: 'back' });
   };
 
   const handleOsdSelectItem = (index: number) => {
-    void command('/commands/list/action', { action: 'select', index }, `Selecting item ${index + 1}`);
+    void runOsdCommand('/commands/list/action', { action: 'select', index });
+  };
+
+  const handleModeChange = (nextMode: 'dlna' | 'osd') => {
+    if (nextMode === mode) return;
+    cancelRequests();
+    setLoadingServers(false);
+    setLoadingContent(false);
+    setScanning(false);
+    setPlayingItemUrl(null);
+    setOsdPending(false);
+    setLibraryError(null);
+    setMode(nextMode);
   };
 
   if (!isNetOrUsb) {
@@ -281,14 +476,16 @@ export const NetList: React.FC<NetListProps> = ({ state, pendingCommand, command
       <div className="netlist-tabs">
         <button
           className={`netlist-tab ${mode === 'dlna' ? 'active' : ''}`}
-          onClick={() => setMode('dlna')}
+          onClick={() => handleModeChange('dlna')}
+          type="button"
         >
           <Server size={12} />
           <span>DLNA Browser</span>
         </button>
         <button
           className={`netlist-tab ${mode === 'osd' ? 'active' : ''}`}
-          onClick={() => setMode('osd')}
+          onClick={() => handleModeChange('osd')}
+          type="button"
         >
           <ListMusic size={12} />
           <span>Onkyo OSD</span>
@@ -331,17 +528,14 @@ export const NetList: React.FC<NetListProps> = ({ state, pendingCommand, command
             </div>
           </div>
 
-          <div className="netlist-items-container" ref={listRef}>
-            {dlnaError && (
-              <div className="netlist-empty" style={{ color: '#ff4d4d' }}>
-                <p>{dlnaError}</p>
-                <button className="primary-button" onClick={() => selectedServer ? browseFolder(selectedServer.id, folderHistory[folderHistory.length - 1]) : fetchServers()}>
-                  Retry
-                </button>
-              </div>
-            )}
+          {libraryError ? (
+            <p className="inline-error netlist-local-error" role="alert">
+              {libraryError}
+            </p>
+          ) : null}
 
-            {!dlnaError && !selectedServer && (
+          <div className="netlist-items-container" ref={listRef}>
+            {!selectedServer && (
               <div className="netlist-scroll-area">
                 {loadingServers ? (
                   <div className="netlist-empty">
@@ -358,23 +552,25 @@ export const NetList: React.FC<NetListProps> = ({ state, pendingCommand, command
                   </div>
                 ) : (
                   servers.map((server) => (
-                    <div
+                    <button
+                      type="button"
                       key={server.id}
                       className="netlist-item container"
                       onClick={() => handleSelectServer(server)}
+                      aria-label={`Open media server ${server.friendlyName}`}
                     >
                       <span className="netlist-item-icon">
                         <Server size={14} />
                       </span>
                       <span className="netlist-item-text">{server.friendlyName}</span>
                       <span className="text-muted" style={{ fontSize: '11px' }}>{server.host}</span>
-                    </div>
+                    </button>
                   ))
                 )}
               </div>
             )}
 
-            {!dlnaError && selectedServer && (
+            {selectedServer && (
               <div className="netlist-scroll-area">
                 {loadingContent && dlnaItems.length === 0 ? (
                   <div className="netlist-empty">
@@ -391,10 +587,12 @@ export const NetList: React.FC<NetListProps> = ({ state, pendingCommand, command
                     const isCurrentlyPlaying = item.type === 'item' && playingItemUrl === item.resourceUrl;
 
                     return (
-                      <div
+                      <button
+                        type="button"
                         key={item.id}
                         className={`netlist-item ${item.type} ${isCurrentlyPlaying ? 'playing' : ''}`}
                         onClick={() => isContainer ? handleSelectFolder(item) : playTrack(item as DLNAItem)}
+                        aria-label={isContainer ? `Open folder ${item.title}` : `Play ${item.title}`}
                       >
                         <span className="netlist-item-icon">
                           {isContainer ? (
@@ -416,18 +614,11 @@ export const NetList: React.FC<NetListProps> = ({ state, pendingCommand, command
                           )}
                         </div>
                         {!isContainer && (
-                          <button
-                            className="netlist-item-add-btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void playTrack(item as DLNAItem);
-                            }}
-                            title="Play via AVTransport"
-                          >
+                          <span className="netlist-item-add-btn" aria-hidden="true">
                             <Play size={14} />
-                          </button>
+                          </span>
                         )}
-                      </div>
+                      </button>
                     );
                   })
                 )}
@@ -460,22 +651,28 @@ export const NetList: React.FC<NetListProps> = ({ state, pendingCommand, command
               <div className="netlist-nav-controls">
                 <button
                   className="netlist-nav-btn"
-                  onClick={() => command('/commands/list/action', { action: 'up' }, 'Scrolling up')}
+                  onClick={() => void runOsdCommand('/commands/list/action', { action: 'up' })}
                   title="Scroll Up (Arrow Up)"
                 >
                   <ChevronUp size={14} />
                 </button>
                 <button
                   className="netlist-nav-btn"
-                  onClick={() => command('/commands/list/action', { action: 'down' }, 'Scrolling down')}
+                  onClick={() => void runOsdCommand('/commands/list/action', { action: 'down' })}
                   title="Scroll Down (Arrow Down)"
                 >
                   <ChevronDown size={14} />
                 </button>
               </div>
-              {pendingCommand && <Loader2 className="animate-spin text-muted" size={14} />}
+              {(osdPending || pendingCommand) && <Loader2 className="animate-spin text-muted" size={14} />}
             </div>
           </div>
+
+          {libraryError ? (
+            <p className="inline-error netlist-local-error" role="alert">
+              {libraryError}
+            </p>
+          ) : null}
 
           <div className="netlist-items-container" ref={listRef} onWheel={handleWheel}>
             {osdItems.length === 0 ? (
@@ -494,10 +691,12 @@ export const NetList: React.FC<NetListProps> = ({ state, pendingCommand, command
                     cleanItemName.toLowerCase() === state.nowPlaying.title.toLowerCase();
 
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={item.index}
                       className={`netlist-item ${item.type} ${isSelected ? 'selected' : ''} ${isPlaying ? 'playing' : ''}`}
                       onClick={() => handleOsdSelectItem(item.index)}
+                      aria-label={`${item.type === 'folder' ? 'Open' : 'Play'} ${item.name}`}
                     >
                       <span className="netlist-item-icon">
                         {item.type === 'folder' ? (
@@ -509,17 +708,10 @@ export const NetList: React.FC<NetListProps> = ({ state, pendingCommand, command
                         )}
                       </span>
                       <span className="netlist-item-text">{item.name}</span>
-                      <button
-                        className="netlist-item-add-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOsdSelectItem(item.index);
-                        }}
-                        title="Play/Enter"
-                      >
+                      <span className="netlist-item-add-btn" aria-hidden="true">
                         <Plus size={14} />
-                      </button>
-                    </div>
+                      </span>
+                    </button>
                   );
                 })}
               </div>

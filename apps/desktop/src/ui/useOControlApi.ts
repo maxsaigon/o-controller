@@ -14,6 +14,10 @@ type ActiveCommand = {
   label: string;
 };
 
+export type RawCommandResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
 function commandDomain(path: string) {
   if (path.startsWith('/presets/')) return 'preset';
   const domain = path.match(/^\/commands\/([^/]+)/)?.[1] ?? path;
@@ -61,6 +65,7 @@ export function useOControlApi(serviceUrl: string) {
   const activeCommands = useRef(new Map<string, ActiveCommand[]>());
   const errorOrder = useRef(0);
   const delayedRefreshTimers = useRef(new Map<string, number>());
+  const rawCommandControllers = useRef(new Set<AbortController>());
 
   const clearDelayedRefresh = useCallback((domain?: string) => {
     if (domain !== undefined) {
@@ -155,6 +160,8 @@ export function useOControlApi(serviceUrl: string) {
         activeCommands.current.clear();
         commandGenerations.current.clear();
         clearDelayedRefresh();
+        for (const controller of rawCommandControllers.current) controller.abort();
+        rawCommandControllers.current.clear();
       }
     };
   }, [clearDelayedRefresh, refreshState, serviceUrl]);
@@ -298,6 +305,49 @@ export function useOControlApi(serviceUrl: string) {
     [clearDelayedRefresh, refreshState, serviceUrl],
   );
 
+  const rawCommand = useCallback(
+    async (path: string, body: unknown, signal?: AbortSignal): Promise<RawCommandResult> => {
+      const lifecycle = lifecycleGeneration.current;
+      const endpoint = serviceUrl;
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      signal?.addEventListener('abort', abort, { once: true });
+      if (signal?.aborted) controller.abort();
+      rawCommandControllers.current.add(controller);
+
+      const isCurrent = () => (
+        mounted.current
+        && lifecycleGeneration.current === lifecycle
+        && activeServiceUrl.current === endpoint
+        && !controller.signal.aborted
+      );
+
+      try {
+        await readJson(`${endpoint}${path}`, {
+          method: 'POST',
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+        return isCurrent()
+          ? { ok: true }
+          : { ok: false, error: 'Command cancelled' };
+      } catch (err) {
+        return {
+          ok: false,
+          error: controller.signal.aborted
+            ? 'Command cancelled'
+            : err instanceof Error
+              ? err.message
+              : 'Command failed',
+        };
+      } finally {
+        signal?.removeEventListener('abort', abort);
+        rawCommandControllers.current.delete(controller);
+      }
+    },
+    [serviceUrl],
+  );
+
   const pendingCommand = useMemo(
     () => pendingCommands.values().next().value ?? null,
     [pendingCommands],
@@ -333,5 +383,6 @@ export function useOControlApi(serviceUrl: string) {
     connectionLabel,
     refresh,
     command,
+    rawCommand,
   };
 }

@@ -154,6 +154,7 @@ export function DesktopShell() {
                     state={state}
                     pendingCommand={pendingFor('list') ?? pendingFor('input')}
                     command={api.command}
+                    rawCommand={api.rawCommand}
                     serviceUrl={serviceUrl}
                   />
                 ) : null}
