@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { InputId, OControlState, PlaybackCommand, PresetDefinition } from '@o-control/shared';
 import { CommandBar } from '../components/CommandBar';
 import { InputSelector } from '../components/InputSelector';
@@ -13,6 +13,19 @@ import { registerDesktopShortcuts, SHORTCUTS, toggleNativePopover, unregisterDes
 import { useOControlApi } from '../ui/useOControlApi';
 import { useServiceManager } from '../ui/useServiceManager';
 
+let shortcutLifecycleQueue: Promise<void> = Promise.resolve();
+
+function enqueueShortcutLifecycle(task: () => Promise<void>): Promise<void> {
+  const queued = shortcutLifecycleQueue.then(task);
+  shortcutLifecycleQueue = queued.catch(() => {});
+  return queued;
+}
+
+function shortcutRegistrationError(error: unknown): ShortcutStatus[] {
+  const message = error instanceof Error ? error.message : String(error);
+  return SHORTCUTS.map((shortcut) => ({ ...shortcut, registered: false, error: message }));
+}
+
 export function DesktopShell() {
   const serviceManager = useServiceManager();
   const serviceUrl = serviceManager.status?.url || 'http://localhost:8787';
@@ -24,6 +37,8 @@ export function DesktopShell() {
   });
 
   const api = useOControlApi(serviceUrl);
+  const shortcutContext = useRef({ command: api.command, playback: api.state.playback });
+  shortcutContext.current = { command: api.command, playback: api.state.playback };
   const pendingFor = (domain: string) => api.pendingCommandFor(domain);
 
   const presets = useMemo<PresetDefinition[]>(() => {
@@ -64,26 +79,43 @@ export function DesktopShell() {
   }
 
   useEffect(() => {
-    let cancelled = false;
-    void registerDesktopShortcuts({
-      volumeUp: async () => {
-        await setVolume('up');
-      },
-      volumeDown: async () => {
-        await setVolume('down');
-      },
-      mute: runMute,
-      playPause: () => runPlayback(api.state.playback === 'playing' ? 'pause' : 'play'),
-      togglePopover: toggleNativePopover,
-    }).then((statuses) => {
-      if (!cancelled) setShortcutStatus(statuses);
+    let active = true;
+    let registrationStarted = false;
+    const registration = enqueueShortcutLifecycle(async () => {
+      if (!active) return;
+      registrationStarted = true;
+      try {
+        const statuses = await registerDesktopShortcuts({
+          volumeUp: async () => {
+            await shortcutContext.current.command('/commands/volume', { value: 'up' }, 'volume:up');
+          },
+          volumeDown: async () => {
+            await shortcutContext.current.command('/commands/volume', { value: 'down' }, 'volume:down');
+          },
+          mute: async () => {
+            await shortcutContext.current.command('/commands/mute', { action: 'toggle' }, 'mute');
+          },
+          playPause: async () => {
+            const action = shortcutContext.current.playback === 'playing' ? 'pause' : 'play';
+            await shortcutContext.current.command('/commands/playback', { action }, `playback:${action}`);
+          },
+          togglePopover: toggleNativePopover,
+        });
+        if (active) setShortcutStatus(statuses);
+      } catch (error) {
+        if (active) setShortcutStatus(shortcutRegistrationError(error));
+      }
     });
+    void registration.catch(() => {});
 
     return () => {
-      cancelled = true;
-      void unregisterDesktopShortcuts();
+      active = false;
+      const cleanup = enqueueShortcutLifecycle(async () => {
+        if (registrationStarted) await unregisterDesktopShortcuts();
+      });
+      void cleanup.catch(() => {});
     };
-  }, [api.state.playback, serviceUrl]);
+  }, []);
 
   const state: OControlState = api.state;
   const receiverAvailable = api.serviceReachable && state.connected;

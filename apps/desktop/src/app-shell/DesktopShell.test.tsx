@@ -2,9 +2,19 @@ import { readFileSync } from 'node:fs';
 import type { OControlState } from '@o-control/shared';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ShortcutDefinition, ShortcutStatus } from '../native/shortcuts';
+import type { ShortcutDefinition, ShortcutId, ShortcutStatus } from '../native/shortcuts';
 import { receiverState } from '../test/fixtures';
 import { DesktopShell } from './DesktopShell';
+
+type ShortcutActions = Record<ShortcutId, () => void | Promise<void>>;
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
 
 const mocks = vi.hoisted(() => ({
   api: {
@@ -45,8 +55,9 @@ const mocks = vi.hoisted(() => ({
         label: 'Volume up',
       },
     ] satisfies ShortcutDefinition[],
-    register: vi.fn<() => Promise<ShortcutStatus[]>>(async () => []),
-    unregister: vi.fn(async () => undefined),
+    actions: [] as ShortcutActions[],
+    register: vi.fn<(actions: ShortcutActions) => Promise<ShortcutStatus[]>>(async () => []),
+    unregister: vi.fn<() => Promise<void>>(async () => undefined),
     toggle: vi.fn(),
   },
 }));
@@ -69,7 +80,8 @@ vi.mock('../components/NetList', () => ({
 }));
 
 describe('DesktopShell navigation', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
     mocks.api.state = receiverState();
     mocks.api.presets = [];
     mocks.api.serviceReachable = true;
@@ -90,12 +102,15 @@ describe('DesktopShell navigation', () => {
     mocks.manager.updateConfig.mockClear();
     mocks.manager.isTauri = false;
     mocks.netListProps = null;
-    mocks.shortcuts.register.mockClear();
-    mocks.shortcuts.register.mockResolvedValue([
-      { ...mocks.shortcuts.definitions[0], registered: true, error: null },
-    ]);
-    mocks.shortcuts.unregister.mockClear();
-    mocks.shortcuts.toggle.mockClear();
+    mocks.shortcuts.actions = [];
+    mocks.shortcuts.register.mockReset();
+    mocks.shortcuts.register.mockImplementation(async (actions) => {
+      mocks.shortcuts.actions.push(actions);
+      return [{ ...mocks.shortcuts.definitions[0], registered: true, error: null }];
+    });
+    mocks.shortcuts.unregister.mockReset();
+    mocks.shortcuts.unregister.mockResolvedValue(undefined);
+    mocks.shortcuts.toggle.mockReset();
   });
 
   it('keeps Volume and Input out of the default player', () => {
@@ -160,9 +175,10 @@ describe('DesktopShell navigation', () => {
   });
 
   it('shows the collected global shortcut registration diagnostics in Settings', async () => {
-    mocks.shortcuts.register.mockResolvedValue([
-      { ...mocks.shortcuts.definitions[0], registered: false, error: 'Already registered' },
-    ]);
+    mocks.shortcuts.register.mockImplementation(async (actions) => {
+      mocks.shortcuts.actions.push(actions);
+      return [{ ...mocks.shortcuts.definitions[0], registered: false, error: 'Already registered' }];
+    });
     render(<DesktopShell />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
@@ -170,6 +186,95 @@ describe('DesktopShell navigation', () => {
     expect(
       await screen.findByRole('status', { name: 'Volume up: Failed — Already registered' }),
     ).toBeInTheDocument();
+  });
+
+  it('registers shortcuts once while handlers follow the latest playback and service actions', async () => {
+    const registration = deferred<ShortcutStatus[]>();
+    const firstCommand = vi.fn(async () => true);
+    const latestCommand = vi.fn(async () => true);
+    mocks.api.command = firstCommand;
+    mocks.shortcuts.register.mockImplementation(async (actions) => {
+      mocks.shortcuts.actions.push(actions);
+      return registration.promise;
+    });
+    const view = render(<DesktopShell />);
+
+    await waitFor(() => expect(mocks.shortcuts.register).toHaveBeenCalledTimes(1));
+    const registeredActions = mocks.shortcuts.actions[0];
+
+    mocks.api.state = receiverState({ playback: 'paused' });
+    mocks.api.command = latestCommand;
+    mocks.manager.status = {
+      mode: 'external',
+      url: 'http://localhost:9876',
+      healthy: true,
+      error: null,
+    };
+    view.rerender(<DesktopShell />);
+
+    expect(mocks.shortcuts.register).toHaveBeenCalledTimes(1);
+    expect(mocks.shortcuts.unregister).not.toHaveBeenCalled();
+    await registeredActions.playPause();
+    await registeredActions.volumeUp();
+    expect(firstCommand).not.toHaveBeenCalled();
+    expect(latestCommand).toHaveBeenNthCalledWith(
+      1,
+      '/commands/playback',
+      { action: 'play' },
+      'playback:play',
+    );
+    expect(latestCommand).toHaveBeenNthCalledWith(
+      2,
+      '/commands/volume',
+      { value: 'up' },
+      'volume:up',
+    );
+
+    registration.resolve([
+      { ...mocks.shortcuts.definitions[0], registered: true, error: null },
+    ]);
+  });
+
+  it('serializes cleanup before a remount registers and ignores stale diagnostics', async () => {
+    const firstRegistration = deferred<ShortcutStatus[]>();
+    const cleanup = deferred<void>();
+    const secondRegistration = deferred<ShortcutStatus[]>();
+    mocks.shortcuts.register
+      .mockImplementationOnce(async (actions) => {
+        mocks.shortcuts.actions.push(actions);
+        return firstRegistration.promise;
+      })
+      .mockImplementationOnce(async (actions) => {
+        mocks.shortcuts.actions.push(actions);
+        return secondRegistration.promise;
+      });
+    mocks.shortcuts.unregister.mockReturnValueOnce(cleanup.promise);
+
+    const firstView = render(<DesktopShell />);
+    await waitFor(() => expect(mocks.shortcuts.register).toHaveBeenCalledTimes(1));
+    firstView.unmount();
+    const secondView = render(<DesktopShell />);
+
+    expect(mocks.shortcuts.register).toHaveBeenCalledTimes(1);
+    expect(mocks.shortcuts.unregister).not.toHaveBeenCalled();
+
+    firstRegistration.resolve([
+      { ...mocks.shortcuts.definitions[0], registered: false, error: 'Stale failure' },
+    ]);
+    await waitFor(() => expect(mocks.shortcuts.unregister).toHaveBeenCalledTimes(1));
+    expect(mocks.shortcuts.register).toHaveBeenCalledTimes(1);
+
+    cleanup.resolve();
+    await waitFor(() => expect(mocks.shortcuts.register).toHaveBeenCalledTimes(2));
+    secondRegistration.resolve([
+      { ...mocks.shortcuts.definitions[0], registered: true, error: null },
+    ]);
+    fireEvent.click(secondView.getByRole('button', { name: 'Settings' }));
+
+    expect(
+      await secondView.findByRole('status', { name: 'Volume up: Registered' }),
+    ).toBeInTheDocument();
+    expect(secondView.queryByRole('status', { name: /Stale failure/ })).not.toBeInTheDocument();
   });
 
   it('keeps Input open on failure and closes it after a successful retry', async () => {
