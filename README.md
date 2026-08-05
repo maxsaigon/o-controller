@@ -161,6 +161,21 @@ Run integration tests:
 npm run test:integration
 ```
 
+### Autonomous verification
+
+Run the complete hardware-free gate:
+
+```bash
+npm run verify:agent
+```
+
+The command type-checks every workspace, runs unit/UI/integration tests, builds
+production artifacts, checks the Tauri Rust shell, starts the built service in
+mock mode, verifies health/state/commands, and stops it. Every stage has a
+timeout and requires no physical receiver or user input.
+
+Use a real CR-N775 only for optional final hardware validation.
+
 ## Local Service API
 
 The desktop app uses this localhost API internally.
