@@ -340,14 +340,31 @@ test(
     skip: process.platform === 'win32',
   },
   async (t) => {
-    const item = await fixture(t, 'stay', 100);
+    const item = await fixture(t, 'stay', 5000);
+    const timerHandle = Symbol('timeout handle');
+    let triggerTimeout;
+    let clearedHandle;
     const result = assert.rejects(
-      runStage(item.stage, item.options),
-      /fixture stay timed out after 100ms/,
+      runStage(item.stage, {
+        ...item.options,
+        setTimeoutImpl(callback, delay) {
+          assert.equal(delay, 5000);
+          triggerTimeout = callback;
+          return timerHandle;
+        },
+        clearTimeoutImpl(handle) {
+          clearedHandle = handle;
+        },
+      }),
+      /fixture stay timed out after 5000ms/,
     );
     const childPid = await item.childPid();
+    assert.equal(typeof triggerTimeout, 'function');
+
+    triggerTimeout();
 
     await result;
+    assert.equal(clearedHandle, timerHandle);
     await waitForCondition(
       () => !processIsAlive(childPid),
       2000,

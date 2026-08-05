@@ -134,6 +134,8 @@ function stageOptions(options) {
     stdio: options.stdio ?? 'inherit',
     logger: options.logger ?? console.log,
     onSpawn: options.onSpawn,
+    setTimeoutImpl: options.setTimeoutImpl ?? setTimeout,
+    clearTimeoutImpl: options.clearTimeoutImpl ?? clearTimeout,
     exitGraceMs: options.exitGraceMs ?? 100,
     termGraceMs: options.termGraceMs ?? 2000,
     killGraceMs: options.killGraceMs ?? 2000,
@@ -176,8 +178,8 @@ export function runStage(stage, suppliedOptions = {}) {
         return;
       }
       completionStarted = true;
-      if (timeout) {
-        clearTimeout(timeout);
+      if (timeout !== null) {
+        options.clearTimeoutImpl(timeout);
       }
       options.signal?.removeEventListener('abort', onAbort);
 
@@ -255,7 +257,7 @@ export function runStage(stage, suppliedOptions = {}) {
     child.once('exit', (code, signal) => {
       complete('exit', { code, signal });
     });
-    timeout = setTimeout(() => {
+    timeout = options.setTimeoutImpl(() => {
       complete('timeout');
     }, stage.timeoutMs);
     options.signal?.addEventListener('abort', onAbort, { once: true });
