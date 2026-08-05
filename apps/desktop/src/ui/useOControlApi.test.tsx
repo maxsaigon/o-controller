@@ -432,4 +432,157 @@ describe('useOControlApi', () => {
     expect(result.current.error).toBeNull();
     unmount();
   });
+
+  it('keeps unrelated command domains pending and refreshes both valid completions', async () => {
+    const { result, unmount } = renderHook(() => useOControlApi('http://localhost:8787'));
+    await waitFor(() => expect(result.current.serviceReachable).toBe(true));
+
+    const powerPostResponse = deferred<Response>();
+    const playbackPostResponse = deferred<Response>();
+    let refreshCount = 0;
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (init?.method === 'POST' && url.endsWith('/commands/power')) {
+        return powerPostResponse.promise;
+      }
+      if (init?.method === 'POST' && url.endsWith('/commands/playback')) {
+        return playbackPostResponse.promise;
+      }
+      if (url.endsWith('/state')) {
+        refreshCount += 1;
+        return Promise.resolve(jsonResponse(receiverState({ volume: 20 + refreshCount })));
+      }
+      if (url.endsWith('/presets')) {
+        return Promise.resolve(jsonResponse([]));
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    let powerPromise!: Promise<boolean>;
+    act(() => {
+      powerPromise = result.current.command('/commands/power', { action: 'toggle' }, 'power');
+    });
+    let playbackPromise!: Promise<boolean>;
+    act(() => {
+      playbackPromise = result.current.command(
+        '/commands/playback',
+        { action: 'pause' },
+        'playback:pause',
+      );
+    });
+
+    expect(result.current.pendingCommandFor('power')).toBe('power');
+    expect(result.current.pendingCommandFor('playback')).toBe('playback:pause');
+
+    let playbackSucceeded: boolean | undefined;
+    await act(async () => {
+      playbackPostResponse.resolve(jsonResponse({ success: true }));
+      playbackSucceeded = await playbackPromise;
+    });
+    expect(playbackSucceeded).toBe(true);
+    expect(refreshCount).toBe(1);
+    expect(result.current.pendingCommandFor('power')).toBe('power');
+    expect(result.current.pendingCommandFor('playback')).toBeNull();
+
+    let powerSucceeded: boolean | undefined;
+    await act(async () => {
+      powerPostResponse.resolve(jsonResponse({ success: true }));
+      powerSucceeded = await powerPromise;
+    });
+    expect(powerSucceeded).toBe(true);
+    expect(refreshCount).toBe(2);
+    expect(result.current.pendingCommandFor('power')).toBeNull();
+    expect(fetchMock.mock.calls
+      .filter(([input]) => String(input).endsWith('/state'))
+      .every(([input]) => String(input).startsWith('http://localhost:8787/'))).toBe(true);
+    unmount();
+  });
+
+  it('rejects a duplicate action while the same command label is pending', async () => {
+    const { result, unmount } = renderHook(() => useOControlApi('http://localhost:8787'));
+    await waitFor(() => expect(result.current.serviceReachable).toBe(true));
+
+    const firstPostResponse = deferred<Response>();
+    let postCount = 0;
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (init?.method === 'POST') {
+        postCount += 1;
+        return postCount === 1
+          ? firstPostResponse.promise
+          : Promise.resolve(jsonResponse({ success: true }));
+      }
+      if (url.endsWith('/state')) return Promise.resolve(jsonResponse(receiverState()));
+      if (url.endsWith('/presets')) return Promise.resolve(jsonResponse([]));
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    let firstPromise!: Promise<boolean>;
+    act(() => {
+      firstPromise = result.current.command('/commands/power', { action: 'toggle' }, 'power');
+    });
+
+    let duplicateSucceeded: boolean | undefined;
+    await act(async () => {
+      duplicateSucceeded = await result.current.command(
+        '/commands/power',
+        { action: 'toggle' },
+        'power',
+      );
+    });
+    expect(duplicateSucceeded).toBe(false);
+    expect(postCount).toBe(1);
+
+    let firstSucceeded: boolean | undefined;
+    await act(async () => {
+      firstPostResponse.resolve(jsonResponse({ success: true }));
+      firstSucceeded = await firstPromise;
+    });
+    expect(firstSucceeded).toBe(true);
+    unmount();
+  });
+
+  it('does not clear one command domain error when an unrelated command refreshes', async () => {
+    const { result, unmount } = renderHook(() => useOControlApi('http://localhost:8787'));
+    await waitFor(() => expect(result.current.serviceReachable).toBe(true));
+
+    const powerPostResponse = deferred<Response>();
+    const playbackPostResponse = deferred<Response>();
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (init?.method === 'POST' && url.endsWith('/commands/power')) {
+        return powerPostResponse.promise;
+      }
+      if (init?.method === 'POST' && url.endsWith('/commands/playback')) {
+        return playbackPostResponse.promise;
+      }
+      if (url.endsWith('/state')) return Promise.resolve(jsonResponse(receiverState()));
+      if (url.endsWith('/presets')) return Promise.resolve(jsonResponse([]));
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    let powerPromise!: Promise<boolean>;
+    let playbackPromise!: Promise<boolean>;
+    act(() => {
+      powerPromise = result.current.command('/commands/power', { action: 'toggle' }, 'power');
+      playbackPromise = result.current.command(
+        '/commands/playback',
+        { action: 'pause' },
+        'playback:pause',
+      );
+    });
+
+    await act(async () => {
+      powerPostResponse.resolve(jsonResponse('Power command failed', false));
+      await powerPromise;
+    });
+    expect(result.current.error).toBe('Power command failed');
+
+    await act(async () => {
+      playbackPostResponse.resolve(jsonResponse({ success: true }));
+      await playbackPromise;
+    });
+    expect(result.current.error).toBe('Power command failed');
+    unmount();
+  });
 });

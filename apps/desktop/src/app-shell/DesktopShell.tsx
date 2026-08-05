@@ -24,6 +24,7 @@ export function DesktopShell() {
   });
 
   const api = useOControlApi(serviceUrl);
+  const pendingFor = (domain: string) => api.pendingCommandFor(domain);
 
   const presets = useMemo<PresetDefinition[]>(() => {
     return api.presets.length > 0
@@ -93,7 +94,7 @@ export function DesktopShell() {
         <StatusHeader
           state={state}
           serviceReachable={api.serviceReachable}
-          pendingCommand={api.pendingCommand}
+          pendingCommand={pendingFor('power')}
           onPower={runPower}
         />
 
@@ -117,7 +118,7 @@ export function DesktopShell() {
               <PlaybackControls
                 playback={state.playback}
                 disabled={!receiverAvailable}
-                pendingCommand={api.pendingCommand}
+                pendingCommand={pendingFor('playback')}
                 onAction={runPlayback}
               />
 
@@ -130,7 +131,7 @@ export function DesktopShell() {
                   <InputSelector
                     value={state.input}
                     disabled={!receiverAvailable}
-                    pendingCommand={api.pendingCommand}
+                    pendingCommand={pendingFor('input')}
                     onChange={setInput}
                   />
                 ) : null}
@@ -140,7 +141,7 @@ export function DesktopShell() {
                     volume={state.volume}
                     disabled={!receiverAvailable}
                     muted={state.muted}
-                    pending={(api.pendingCommand?.startsWith('volume') ?? false) || api.pendingCommand === 'mute'}
+                    pending={pendingFor('volume') !== null}
                     onStepDown={() => setVolume('down')}
                     onStepUp={() => setVolume('up')}
                     onCommit={setVolume}
@@ -151,7 +152,7 @@ export function DesktopShell() {
                 {activePanel === 'list' ? (
                   <NetList
                     state={state}
-                    pendingCommand={api.pendingCommand}
+                    pendingCommand={pendingFor('list') ?? pendingFor('input')}
                     command={api.command}
                     serviceUrl={serviceUrl}
                   />

@@ -11,6 +11,13 @@ const mocks = vi.hoisted(() => ({
     presets: [],
     serviceReachable: true,
     pendingCommand: null as string | null,
+    pendingCommandFor: vi.fn((domain: string) => {
+      const pending = mocks.api.pendingCommand;
+      if (domain === 'volume') {
+        return pending?.startsWith('volume:') || pending === 'mute' ? pending : null;
+      }
+      return pending === domain || pending?.startsWith(`${domain}:`) ? pending : null;
+    }),
     error: null as string | null,
     connectionLabel: 'Connected',
     refresh: vi.fn(async () => undefined),
@@ -58,6 +65,7 @@ describe('DesktopShell navigation', () => {
     mocks.api.presets = [];
     mocks.api.serviceReachable = true;
     mocks.api.pendingCommand = null;
+    mocks.api.pendingCommandFor.mockClear();
     mocks.api.error = null;
     mocks.api.connectionLabel = 'Connected';
     mocks.api.refresh.mockClear();
@@ -206,5 +214,14 @@ describe('DesktopShell navigation', () => {
 
     expect(screen.getByRole('button', { name: 'Standby' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled();
+  });
+
+  it('keeps volume controls enabled while only Playback is pending', () => {
+    mocks.api.pendingCommand = 'playback:pause';
+    render(<DesktopShell />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Volume' }));
+    expect(screen.getByRole('button', { name: 'Volume down' })).toBeEnabled();
+    expect(screen.getByRole('slider', { name: 'Volume' })).toBeEnabled();
   });
 });

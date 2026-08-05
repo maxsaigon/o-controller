@@ -4,6 +4,17 @@ import type { OControlEvent, OControlState, PresetDefinition } from '@o-control/
 
 const EMPTY_STATE: OControlState = DEFAULT_STATE;
 
+type ErrorState = {
+  message: string;
+  order: number;
+};
+
+function commandDomain(path: string) {
+  if (path.startsWith('/presets/')) return 'preset';
+  const domain = path.match(/^\/commands\/([^/]+)/)?.[1] ?? path;
+  return domain === 'mute' ? 'volume' : domain;
+}
+
 function eventUrl(serviceUrl: string) {
   const url = new URL(serviceUrl);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -30,19 +41,36 @@ export function useOControlApi(serviceUrl: string) {
   const [state, setState] = useState<OControlState>(EMPTY_STATE);
   const [presets, setPresets] = useState<PresetDefinition[]>([]);
   const [serviceReachable, setServiceReachable] = useState(false);
-  const [pendingCommand, setPendingCommand] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [pendingCommands, setPendingCommands] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  );
+  const [serviceError, setServiceError] = useState<ErrorState | null>(null);
+  const [commandErrors, setCommandErrors] = useState<ReadonlyMap<string, ErrorState>>(
+    () => new Map(),
+  );
   const mounted = useRef(false);
   const activeServiceUrl = useRef<string | null>(null);
   const lifecycleGeneration = useRef(0);
-  const commandGeneration = useRef(0);
-  const delayedRefreshTimer = useRef<number | undefined>(undefined);
+  const commandGenerations = useRef(new Map<string, number>());
+  const activeCommands = useRef(new Map<string, { generation: number; label: string }>());
+  const errorOrder = useRef(0);
+  const delayedRefreshTimers = useRef(new Map<string, number>());
 
-  const clearDelayedRefresh = useCallback(() => {
-    if (delayedRefreshTimer.current !== undefined) {
-      window.clearTimeout(delayedRefreshTimer.current);
-      delayedRefreshTimer.current = undefined;
+  const clearDelayedRefresh = useCallback((domain?: string) => {
+    if (domain !== undefined) {
+      const timer = delayedRefreshTimers.current.get(domain);
+      if (timer !== undefined) window.clearTimeout(timer);
+      delayedRefreshTimers.current.delete(domain);
+      return;
     }
+
+    for (const timer of delayedRefreshTimers.current.values()) window.clearTimeout(timer);
+    delayedRefreshTimers.current.clear();
+  }, []);
+
+  const setServiceErrorMessage = useCallback((message: string) => {
+    errorOrder.current += 1;
+    setServiceError({ message, order: errorOrder.current });
   }, []);
 
   const refreshState = useCallback(
@@ -56,14 +84,14 @@ export function useOControlApi(serviceUrl: string) {
         setState(nextState);
         setPresets(nextPresets);
         setServiceReachable(true);
-        setError(null);
+        setServiceError(null);
       } catch (err) {
         if (!isCurrent()) return;
         setServiceReachable(false);
-        setError(err instanceof Error ? err.message : 'Service unavailable');
+        setServiceErrorMessage(err instanceof Error ? err.message : 'Service unavailable');
       }
     },
-    [],
+    [setServiceErrorMessage],
   );
 
   const refresh = useCallback(async () => {
@@ -84,8 +112,11 @@ export function useOControlApi(serviceUrl: string) {
     setState(EMPTY_STATE);
     setPresets([]);
     setServiceReachable(false);
-    setError(null);
-    setPendingCommand(null);
+    setServiceError(null);
+    setCommandErrors(new Map());
+    setPendingCommands(new Map());
+    activeCommands.current.clear();
+    commandGenerations.current.clear();
     void refreshState(serviceUrl, () => (
       mounted.current
       && lifecycleGeneration.current === lifecycle
@@ -96,7 +127,8 @@ export function useOControlApi(serviceUrl: string) {
       if (lifecycleGeneration.current === lifecycle) {
         mounted.current = false;
         activeServiceUrl.current = null;
-        commandGeneration.current += 1;
+        activeCommands.current.clear();
+        commandGenerations.current.clear();
         clearDelayedRefresh();
       }
     };
@@ -119,7 +151,7 @@ export function useOControlApi(serviceUrl: string) {
 
       socket.addEventListener('open', () => {
         if (closed) return;
-        setError(null);
+        setServiceError(null);
       });
 
       socket.addEventListener('message', (message) => {
@@ -131,7 +163,7 @@ export function useOControlApi(serviceUrl: string) {
             setServiceReachable(true);
           }
         } catch {
-          setError('Received malformed event from service');
+          setServiceErrorMessage('Received malformed event from service');
         }
       });
 
@@ -154,25 +186,41 @@ export function useOControlApi(serviceUrl: string) {
       if (retryTimer !== undefined) window.clearTimeout(retryTimer);
       socket?.close();
     };
-  }, [serviceUrl]);
+  }, [serviceUrl, setServiceErrorMessage]);
 
   const command = useCallback(
     async (path: string, body: unknown, label: string): Promise<boolean> => {
       const lifecycle = lifecycleGeneration.current;
       const endpoint = serviceUrl;
-      const generation = commandGeneration.current + 1;
-      commandGeneration.current = generation;
-      clearDelayedRefresh();
+      const domain = commandDomain(path);
+      const active = activeCommands.current.get(domain);
+      if (active?.label === label) return false;
+
+      const generation = (commandGenerations.current.get(domain) ?? 0) + 1;
+      commandGenerations.current.set(domain, generation);
+      activeCommands.current.set(domain, { generation, label });
+      clearDelayedRefresh(domain);
 
       const isCurrent = () => (
         mounted.current
         && lifecycleGeneration.current === lifecycle
         && activeServiceUrl.current === endpoint
-        && commandGeneration.current === generation
+        && commandGenerations.current.get(domain) === generation
       );
 
-      setPendingCommand(label);
-      setError(null);
+      setPendingCommands((current) => {
+        const next = new Map(current);
+        next.delete(domain);
+        next.set(domain, label);
+        return next;
+      });
+      setCommandErrors((current) => {
+        if (!current.has(domain)) return current;
+        const next = new Map(current);
+        next.delete(domain);
+        return next;
+      });
+      setServiceError(null);
       try {
         await readJson(`${endpoint}${path}`, {
           method: 'POST',
@@ -183,25 +231,55 @@ export function useOControlApi(serviceUrl: string) {
         if (!isCurrent()) return false;
 
         // Fallback refresh for delayed receiver response
-        delayedRefreshTimer.current = window.setTimeout(() => {
-          delayedRefreshTimer.current = undefined;
+        const timer = window.setTimeout(() => {
+          delayedRefreshTimers.current.delete(domain);
           if (isCurrent()) {
             void refreshState(endpoint, isCurrent);
           }
         }, 1500);
+        delayedRefreshTimers.current.set(domain, timer);
         return true;
       } catch (err) {
         if (!isCurrent()) return false;
-        setError(err instanceof Error ? err.message : `Command failed: ${label}`);
+        errorOrder.current += 1;
+        const nextError = {
+          message: err instanceof Error ? err.message : `Command failed: ${label}`,
+          order: errorOrder.current,
+        };
+        setCommandErrors((current) => new Map(current).set(domain, nextError));
         return false;
       } finally {
         if (isCurrent()) {
-          setPendingCommand(null);
+          activeCommands.current.delete(domain);
+          setPendingCommands((current) => {
+            if (!current.has(domain)) return current;
+            const next = new Map(current);
+            next.delete(domain);
+            return next;
+          });
         }
       }
     },
     [clearDelayedRefresh, refreshState, serviceUrl],
   );
+
+  const pendingCommand = useMemo(
+    () => pendingCommands.values().next().value ?? null,
+    [pendingCommands],
+  );
+
+  const pendingCommandFor = useCallback(
+    (domain: string) => pendingCommands.get(domain) ?? null,
+    [pendingCommands],
+  );
+
+  const error = useMemo(() => {
+    let latest = serviceError;
+    for (const commandError of commandErrors.values()) {
+      if (latest === null || commandError.order > latest.order) latest = commandError;
+    }
+    return latest?.message ?? null;
+  }, [commandErrors, serviceError]);
 
   const connectionLabel = useMemo(() => {
     if (!serviceReachable) return 'Service offline';
@@ -215,6 +293,7 @@ export function useOControlApi(serviceUrl: string) {
     presets,
     serviceReachable,
     pendingCommand,
+    pendingCommandFor,
     error,
     connectionLabel,
     refresh,
