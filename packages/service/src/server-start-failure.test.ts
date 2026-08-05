@@ -12,12 +12,14 @@ test('post-listen runtime initialization failure closes the listener', async () 
   const originalConnect = receiver.connect.bind(receiver);
   const originalListening = Object.getOwnPropertyDescriptor(app.server, 'listening');
   let simulatedListening = false;
+  let listenOptions: unknown;
 
   Object.defineProperty(app.server, 'listening', {
     configurable: true,
     get: () => simulatedListening,
   });
-  (app as any).listen = async () => {
+  (app as any).listen = async (options: unknown) => {
+    listenOptions = options;
     simulatedListening = true;
     return 'http://127.0.0.1:0';
   };
@@ -30,6 +32,7 @@ test('post-listen runtime initialization failure closes the listener', async () 
 
   try {
     await assert.rejects(start(), /receiver startup failed/);
+    assert.deepEqual(listenOptions, { port: 8787, host: '127.0.0.1' });
     assert.equal(app.server.listening, false);
   } finally {
     (app as any).listen = originalListen;

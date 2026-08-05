@@ -788,7 +788,7 @@ export async function stop(): Promise<void> {
 }
 
 async function startRuntime(): Promise<void> {
-  await app.listen({ port: config.O_CONTROL_PORT, host: '0.0.0.0' });
+  await app.listen({ port: config.O_CONTROL_PORT, host: config.O_CONTROL_HOST });
 
   try {
     if (stopRequested) {
@@ -803,7 +803,7 @@ async function startRuntime(): Promise<void> {
       void getReceiverAVTransportUrl();
     }
 
-    app.log.info(`O-Control service listening on port ${config.O_CONTROL_PORT}`);
+    app.log.info(`O-Control service listening on ${config.O_CONTROL_HOST}:${config.O_CONTROL_PORT}`);
   } catch (err) {
     try {
       await closeRuntime();

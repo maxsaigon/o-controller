@@ -187,6 +187,7 @@ export async function runServiceSmoke() {
     env: {
       ...process.env,
       MOCK_MODE: 'true',
+      O_CONTROL_HOST: '127.0.0.1',
       O_CONTROL_PORT: String(port),
       LOG_LEVEL: 'silent',
     },
