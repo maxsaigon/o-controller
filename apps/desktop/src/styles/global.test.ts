@@ -182,6 +182,13 @@ describe('desktop native layout tokens', () => {
     expect(declarationFor('.netlist-panel', 'box-sizing')).toBe('border-box');
   });
 
+  it('preserves the phrasing wrapper as the flexible DLNA metadata column', () => {
+    expect(declarationFor('.netlist-item-text-group', 'display')).toBe('flex');
+    expect(declarationFor('.netlist-item-text-group', 'flex-direction')).toBe('column');
+    expect(declarationFor('.netlist-item-text-group', 'flex')).toBe('1');
+    expect(declarationFor('.netlist-item-text-group', 'min-width')).toBe('0');
+  });
+
   it('uses accessible text colors without changing brand and dot colors', () => {
     const surfaceMuted = declarationFor(':root', '--surface-muted');
     const connectedText = declarationFor(':root', '--connected-text');
