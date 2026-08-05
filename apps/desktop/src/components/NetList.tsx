@@ -40,6 +40,7 @@ interface DLNAItem {
 }
 
 type DLNABrowseElement = DLNAContainer | DLNAItem;
+type FailedBrowse = { serverId: string; objectId: string };
 
 export const NetList: React.FC<NetListProps> = ({
   state,
@@ -79,6 +80,7 @@ export const NetList: React.FC<NetListProps> = ({
   const [loadingContent, setLoadingContent] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [libraryError, setLibraryError] = useState<string | null>(null);
+  const [failedBrowse, setFailedBrowse] = useState<FailedBrowse | null>(null);
   const [playingItemUrl, setPlayingItemUrl] = useState<string | null>(null);
   const [osdPending, setOsdPending] = useState(false);
 
@@ -124,6 +126,7 @@ export const NetList: React.FC<NetListProps> = ({
     setPlayingItemUrl(null);
     setOsdPending(false);
     setLibraryError(null);
+    setFailedBrowse(null);
 
     return () => {
       if (lifecycleGeneration.current === lifecycle) {
@@ -226,6 +229,8 @@ export const NetList: React.FC<NetListProps> = ({
     );
     setLoadingContent(true);
     setLibraryError(null);
+    setFailedBrowse(null);
+    setDlnaItems([]);
     try {
       const res = await fetch(`${serviceUrl}/dlna/browse`, {
         method: 'POST',
@@ -239,6 +244,7 @@ export const NetList: React.FC<NetListProps> = ({
     } catch (err) {
       if (isCurrent()) {
         setLibraryError(err instanceof Error ? err.message : 'Folder query failed');
+        setFailedBrowse({ serverId, objectId });
       }
     } finally {
       releaseController(controller);
@@ -322,6 +328,7 @@ export const NetList: React.FC<NetListProps> = ({
       setPlayingItemUrl(null);
       setSelectedServer(null);
       setDlnaItems([]);
+      setFailedBrowse(null);
     }
   };
 
@@ -340,6 +347,13 @@ export const NetList: React.FC<NetListProps> = ({
     setScanning(false);
     setPlayingItemUrl(null);
     setOsdPending(false);
+    setServers([]);
+    setSelectedServer(null);
+    setDlnaItems([]);
+    setFolderHistory(['0']);
+    setFolderTitleHistory(['Root']);
+    setLibraryError(null);
+    setFailedBrowse(null);
   }, [cancelRequests, isNetOrUsb]);
 
   const runOsdCommand = useCallback(async (path: string, body: unknown) => {
@@ -452,6 +466,7 @@ export const NetList: React.FC<NetListProps> = ({
     setPlayingItemUrl(null);
     setOsdPending(false);
     setLibraryError(null);
+    setFailedBrowse(null);
     setMode(nextMode);
   };
 
@@ -529,9 +544,19 @@ export const NetList: React.FC<NetListProps> = ({
           </div>
 
           {libraryError ? (
-            <p className="inline-error netlist-local-error" role="alert">
-              {libraryError}
-            </p>
+            <div className="inline-error netlist-local-error" role="alert">
+              <span>{libraryError}</span>
+              {failedBrowse ? (
+                <button
+                  type="button"
+                  className="netlist-retry-button"
+                  aria-label="Retry browse"
+                  onClick={() => void browseFolder(failedBrowse.serverId, failedBrowse.objectId)}
+                >
+                  Retry
+                </button>
+              ) : null}
+            </div>
           ) : null}
 
           <div className="netlist-items-container" ref={listRef}>
@@ -577,7 +602,7 @@ export const NetList: React.FC<NetListProps> = ({
                     <Loader2 className="animate-spin text-muted" size={24} />
                     <p>Retrieving directory list...</p>
                   </div>
-                ) : dlnaItems.length === 0 ? (
+                ) : dlnaItems.length === 0 && !libraryError ? (
                   <div className="netlist-empty">
                     <p>This folder is empty.</p>
                   </div>
@@ -603,7 +628,7 @@ export const NetList: React.FC<NetListProps> = ({
                             <Music size={14} />
                           )}
                         </span>
-                        <div className="netlist-item-text-group" style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+                        <span className="netlist-item-text-group">
                           <span className="netlist-item-text" style={{ fontWeight: isContainer ? '500' : 'normal' }}>
                             {item.title}
                           </span>
@@ -612,7 +637,7 @@ export const NetList: React.FC<NetListProps> = ({
                               {[item.artist, item.album].filter(Boolean).join(' • ')}
                             </span>
                           )}
-                        </div>
+                        </span>
                         {!isContainer && (
                           <span className="netlist-item-add-btn" aria-hidden="true">
                             <Play size={14} />

@@ -903,4 +903,98 @@ describe('useOControlApi', () => {
     expect(result.current.pendingCommand).toBeNull();
     unmount();
   });
+
+  it('links an external abort signal to raw commands and removes its listener', async () => {
+    const { result, unmount } = renderHook(() => useOControlApi('http://localhost:8787'));
+    await waitFor(() => expect(result.current.serviceReachable).toBe(true));
+
+    const rawResponse = deferred<Response>();
+    let requestSignal: AbortSignal | undefined;
+    fetchMock.mockImplementationOnce((_input, init) => {
+      requestSignal = init?.signal ?? undefined;
+      return rawResponse.promise;
+    });
+    const external = new AbortController();
+    const addListener = vi.spyOn(external.signal, 'addEventListener');
+    const removeListener = vi.spyOn(external.signal, 'removeEventListener');
+    let rawPromise!: ReturnType<typeof result.current.rawCommand>;
+    act(() => {
+      rawPromise = result.current.rawCommand('/commands/list/query', {}, external.signal);
+    });
+
+    external.abort();
+    expect(requestSignal?.aborted).toBe(true);
+    let rawResult: Awaited<typeof rawPromise> | undefined;
+    await act(async () => {
+      rawResponse.resolve(jsonResponse({ success: true }));
+      rawResult = await rawPromise;
+    });
+
+    expect(rawResult).toEqual({ ok: false, error: 'Command cancelled' });
+    expect(addListener).toHaveBeenCalledWith('abort', expect.any(Function), { once: true });
+    expect(removeListener).toHaveBeenCalledWith('abort', expect.any(Function));
+    expect(result.current.error).toBeNull();
+    unmount();
+  });
+
+  it('aborts an in-flight raw command when the service URL changes', async () => {
+    const { result, rerender, unmount } = renderHook(
+      ({ serviceUrl }) => useOControlApi(serviceUrl),
+      { initialProps: { serviceUrl: 'http://old-service:8787' } },
+    );
+    await waitFor(() => expect(result.current.serviceReachable).toBe(true));
+
+    const rawResponse = deferred<Response>();
+    let requestSignal: AbortSignal | undefined;
+    fetchMock
+      .mockImplementationOnce((_input, init) => {
+        requestSignal = init?.signal ?? undefined;
+        return rawResponse.promise;
+      })
+      .mockResolvedValueOnce(jsonResponse(receiverState({ volume: 45 })))
+      .mockResolvedValueOnce(jsonResponse([]));
+    let rawPromise!: ReturnType<typeof result.current.rawCommand>;
+    act(() => {
+      rawPromise = result.current.rawCommand('/commands/list/query', {});
+    });
+
+    rerender({ serviceUrl: 'http://new-service:8787' });
+    expect(requestSignal?.aborted).toBe(true);
+    await waitFor(() => expect(result.current.state.volume).toBe(45));
+    let rawResult: Awaited<typeof rawPromise> | undefined;
+    await act(async () => {
+      rawResponse.resolve(jsonResponse({ success: true }));
+      rawResult = await rawPromise;
+    });
+
+    expect(rawResult).toEqual({ ok: false, error: 'Command cancelled' });
+    expect(result.current.error).toBeNull();
+    unmount();
+  });
+
+  it('aborts an in-flight raw command when the hook unmounts', async () => {
+    const { result, unmount } = renderHook(() => useOControlApi('http://localhost:8787'));
+    await waitFor(() => expect(result.current.serviceReachable).toBe(true));
+
+    const rawResponse = deferred<Response>();
+    let requestSignal: AbortSignal | undefined;
+    fetchMock.mockImplementationOnce((_input, init) => {
+      requestSignal = init?.signal ?? undefined;
+      return rawResponse.promise;
+    });
+    let rawPromise!: ReturnType<typeof result.current.rawCommand>;
+    act(() => {
+      rawPromise = result.current.rawCommand('/commands/list/query', {});
+    });
+
+    unmount();
+    expect(requestSignal?.aborted).toBe(true);
+    let rawResult: Awaited<typeof rawPromise> | undefined;
+    await act(async () => {
+      rawResponse.resolve(jsonResponse({ success: true }));
+      rawResult = await rawPromise;
+    });
+
+    expect(rawResult).toEqual({ ok: false, error: 'Command cancelled' });
+  });
 });

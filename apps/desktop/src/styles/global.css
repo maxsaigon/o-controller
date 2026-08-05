@@ -1203,6 +1203,8 @@ kbd {
   width: 100%;
   min-height: 38px;
   padding: 0 12px;
+  appearance: none;
+  -webkit-appearance: none;
   border-top: 0;
   border-right: 0;
   border-left: 0;
@@ -1218,8 +1220,25 @@ kbd {
 }
 
 .netlist-local-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   flex-shrink: 0;
   margin: 0 0 8px;
+}
+
+.netlist-retry-button {
+  flex-shrink: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  padding: 2px 4px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
 }
 
 .netlist-item:last-child {

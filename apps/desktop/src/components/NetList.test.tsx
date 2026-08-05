@@ -267,6 +267,84 @@ describe('NetList', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  it('returns to a fresh server root after the receiver leaves and re-enters NET input', async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/dlna/servers')) {
+        return jsonResponse({
+          servers: [{ id: 'nas', friendlyName: 'Fresh NAS', host: '192.0.2.50' }],
+        });
+      }
+      if (url.endsWith('/dlna/browse')) {
+        return jsonResponse({
+          items: [{ id: 'track', parentId: '0', title: 'Old selection', type: 'item', resourceUrl: 'http://nas/old' }],
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    const { rerender } = renderNetList();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Open media server Fresh NAS' }));
+    expect(await screen.findByRole('button', { name: 'Play Old selection' })).toBeVisible();
+
+    rerender(
+      <NetList
+        state={receiverState({ input: 'cd' })}
+        pendingCommand={null}
+        command={command}
+        rawCommand={rawCommand}
+        serviceUrl="http://service-a:8787"
+      />,
+    );
+    expect(screen.getByText('Music Server list is only available on Network or USB input.')).toBeVisible();
+
+    rerender(
+      <NetList
+        state={receiverState({ input: 'net' })}
+        pendingCommand={null}
+        command={command}
+        rawCommand={rawCommand}
+        serviceUrl="http://service-a:8787"
+      />,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Media Servers' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Open media server Fresh NAS' })).toBeVisible();
+    expect(screen.queryByText('Old selection')).not.toBeInTheDocument();
+  });
+
+  it('retries the failed browse in place without describing the folder as empty', async () => {
+    let browseCount = 0;
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/dlna/servers')) {
+        return jsonResponse({
+          servers: [{ id: 'nas', friendlyName: 'Retry NAS', host: '192.0.2.60' }],
+        });
+      }
+      if (url.endsWith('/dlna/browse')) {
+        browseCount += 1;
+        return browseCount === 1
+          ? jsonResponse('Browse unavailable', false)
+          : jsonResponse({
+              items: [{ id: 'recovered', parentId: '0', title: 'Recovered track', type: 'item', resourceUrl: 'http://nas/recovered' }],
+            });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    renderNetList();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Open media server Retry NAS' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Failed to browse folder contents');
+    expect(screen.queryByText('This folder is empty.')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry browse' }));
+
+    expect(await screen.findByRole('button', { name: 'Play Recovered track' })).toBeVisible();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(browseCount).toBe(2);
+  });
+
   it('exposes DLNA rows as named buttons with native keyboard activation semantics', async () => {
     fetchMock.mockImplementation(async (input) => {
       const url = String(input);
@@ -286,11 +364,13 @@ describe('NetList', () => {
 
     const serverButton = await screen.findByRole('button', { name: 'Open media server Keyboard NAS' });
     expect(serverButton.tagName).toBe('BUTTON');
+    expect(serverButton.querySelector('div')).toBeNull();
     serverButton.focus();
     fireEvent.click(serverButton, { detail: 0 });
 
     const folderButton = await screen.findByRole('button', { name: 'Open folder Keyboard Folder' });
     expect(folderButton.tagName).toBe('BUTTON');
+    expect(folderButton.querySelector('div')).toBeNull();
     folderButton.focus();
     fireEvent.click(folderButton, { detail: 0 });
     await waitFor(() => expect(fetchMock.mock.calls.filter(([input]) => String(input).endsWith('/dlna/browse'))).toHaveLength(2));
