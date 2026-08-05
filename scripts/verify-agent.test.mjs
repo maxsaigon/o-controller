@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rename, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -8,6 +9,23 @@ import { runAgentMain, runStage } from './verify-agent.mjs';
 import { createOutputTail } from './service-smoke.mjs';
 
 const LONG_LIVED_CHILD = 'setInterval(() => {}, 1000)';
+const INTERNAL_DIST_DIRS = [
+  'packages/shared/dist',
+  'packages/eiscp/dist',
+  'packages/upnp/dist',
+];
+
+async function pathExists(target) {
+  try {
+    await access(target);
+    return true;
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return false;
+    }
+    throw error;
+  }
+}
 
 function processIsAlive(pid) {
   try {
@@ -278,6 +296,62 @@ test('Windows verification fails before spawning a stage', async () => {
     'verify:agent requires POSIX process-group isolation; Windows is not supported',
   ]);
 });
+
+test(
+  'typecheck bootstraps internal declarations without stale dist artifacts',
+  { timeout: 120_000 },
+  async () => {
+    const backupRoot = await mkdtemp(
+      path.join(tmpdir(), 'verify-agent-typecheck-'),
+    );
+    const movedDirectories = [];
+
+    try {
+      for (const relativeDirectory of INTERNAL_DIST_DIRS) {
+        const directory = path.resolve(relativeDirectory);
+        if (!(await pathExists(directory))) {
+          continue;
+        }
+        const backup = path.join(
+          backupRoot,
+          relativeDirectory.replaceAll('/', '-'),
+        );
+        await rename(directory, backup);
+        movedDirectories.push({ directory, backup });
+      }
+
+      const result = spawnSync('npm', ['run', 'typecheck'], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        timeout: 120_000,
+      });
+      assert.equal(
+        result.status,
+        0,
+        [result.stdout, result.stderr].filter(Boolean).join('\n'),
+      );
+
+      for (const relativeDirectory of INTERNAL_DIST_DIRS) {
+        assert.equal(
+          await pathExists(path.resolve(relativeDirectory, 'index.d.ts')),
+          true,
+          `${relativeDirectory} was not bootstrapped`,
+        );
+      }
+    } finally {
+      for (const relativeDirectory of INTERNAL_DIST_DIRS) {
+        await rm(path.resolve(relativeDirectory), {
+          recursive: true,
+          force: true,
+        });
+      }
+      for (const { directory, backup } of movedDirectories) {
+        await rename(backup, directory);
+      }
+      await rm(backupRoot, { recursive: true, force: true });
+    }
+  },
+);
 
 test('captured output retains only a bounded tail', () => {
   const output = createOutputTail(8);
