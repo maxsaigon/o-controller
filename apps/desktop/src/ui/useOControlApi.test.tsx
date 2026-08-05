@@ -666,4 +666,221 @@ describe('useOControlApi', () => {
     expect(result.current.error).toBe('Power command failed');
     unmount();
   });
+
+  it('keeps the newest cross-domain state refresh when responses resolve in reverse order', async () => {
+    const { result, unmount } = renderHook(() => useOControlApi('http://localhost:8787'));
+    await waitFor(() => expect(result.current.serviceReachable).toBe(true));
+
+    const olderStateResponse = deferred<Response>();
+    const olderPresetsResponse = deferred<Response>();
+    const newerStateResponse = deferred<Response>();
+    const newerPresetsResponse = deferred<Response>();
+    let stateRequestCount = 0;
+    let presetRequestCount = 0;
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (init?.method === 'POST') {
+        return Promise.resolve(jsonResponse({ success: true }));
+      }
+      if (url.endsWith('/state')) {
+        stateRequestCount += 1;
+        return stateRequestCount === 1 ? olderStateResponse.promise : newerStateResponse.promise;
+      }
+      if (url.endsWith('/presets')) {
+        presetRequestCount += 1;
+        return presetRequestCount === 1
+          ? olderPresetsResponse.promise
+          : newerPresetsResponse.promise;
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    let olderCommandPromise!: Promise<boolean>;
+    act(() => {
+      olderCommandPromise = result.current.command(
+        '/commands/power',
+        { action: 'toggle' },
+        'power',
+      );
+    });
+    await waitFor(() => expect(stateRequestCount).toBe(1));
+
+    let newerCommandPromise!: Promise<boolean>;
+    act(() => {
+      newerCommandPromise = result.current.command(
+        '/commands/playback',
+        { action: 'pause' },
+        'playback:pause',
+      );
+    });
+    await waitFor(() => expect(stateRequestCount).toBe(2));
+
+    await act(async () => {
+      newerStateResponse.resolve(jsonResponse(receiverState({ volume: 44 })));
+      newerPresetsResponse.resolve(jsonResponse([
+        { id: 'newer', name: 'Newer', description: '', steps: [] },
+      ]));
+      await newerCommandPromise;
+    });
+    expect(result.current.state.volume).toBe(44);
+    expect(result.current.presets.map(({ id }) => id)).toEqual(['newer']);
+
+    await act(async () => {
+      olderStateResponse.resolve(jsonResponse(receiverState({ volume: 11 })));
+      olderPresetsResponse.resolve(jsonResponse([
+        { id: 'older', name: 'Older', description: '', steps: [] },
+      ]));
+      await olderCommandPromise;
+    });
+    expect(result.current.state.volume).toBe(44);
+    expect(result.current.presets.map(({ id }) => id)).toEqual(['newer']);
+    unmount();
+  });
+
+  it('clears existing command errors after a successful manual refresh', async () => {
+    const { result, unmount } = renderHook(() => useOControlApi('http://localhost:8787'));
+    await waitFor(() => expect(result.current.serviceReachable).toBe(true));
+
+    fetchMock.mockResolvedValueOnce(jsonResponse('Power command failed', false));
+    await act(async () => {
+      await result.current.command('/commands/power', { action: 'toggle' }, 'power');
+    });
+    expect(result.current.error).toBe('Power command failed');
+
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(receiverState({ volume: 33 })))
+      .mockResolvedValueOnce(jsonResponse([]));
+    await act(async () => result.current.refresh());
+
+    expect(result.current.state.volume).toBe(33);
+    expect(result.current.error).toBeNull();
+    unmount();
+  });
+
+  it('preserves command errors raised after a manual refresh starts', async () => {
+    const { result, unmount } = renderHook(() => useOControlApi('http://localhost:8787'));
+    await waitFor(() => expect(result.current.serviceReachable).toBe(true));
+
+    fetchMock.mockResolvedValueOnce(jsonResponse('Old power error', false));
+    await act(async () => {
+      await result.current.command('/commands/power', { action: 'toggle' }, 'power');
+    });
+    expect(result.current.error).toBe('Old power error');
+
+    const manualStateResponse = deferred<Response>();
+    let manualStateRequested = false;
+    let playbackPostCount = 0;
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (init?.method === 'POST' && url.endsWith('/commands/playback')) {
+        playbackPostCount += 1;
+        return Promise.resolve(playbackPostCount === 1
+          ? jsonResponse('New playback error', false)
+          : jsonResponse({ success: true }));
+      }
+      if (url.endsWith('/state')) {
+        if (!manualStateRequested) {
+          manualStateRequested = true;
+          return manualStateResponse.promise;
+        }
+        return Promise.resolve(jsonResponse(receiverState()));
+      }
+      if (url.endsWith('/presets')) return Promise.resolve(jsonResponse([]));
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    let manualRefreshPromise!: Promise<void>;
+    act(() => {
+      manualRefreshPromise = result.current.refresh();
+    });
+    await waitFor(() => expect(manualStateRequested).toBe(true));
+
+    await act(async () => {
+      await result.current.command(
+        '/commands/playback',
+        { action: 'pause' },
+        'playback:pause',
+      );
+    });
+    expect(result.current.error).toBe('New playback error');
+
+    await act(async () => {
+      manualStateResponse.resolve(jsonResponse(receiverState({ volume: 35 })));
+      await manualRefreshPromise;
+    });
+    expect(result.current.error).toBe('New playback error');
+
+    await act(async () => {
+      await result.current.command(
+        '/commands/playback',
+        { action: 'pause' },
+        'playback:pause',
+      );
+    });
+    expect(result.current.error).toBeNull();
+    unmount();
+  });
+
+  it('clears old errors when a successful manual response is superseded by an internal refresh', async () => {
+    const { result, unmount } = renderHook(() => useOControlApi('http://localhost:8787'));
+    await waitFor(() => expect(result.current.serviceReachable).toBe(true));
+
+    fetchMock.mockResolvedValueOnce(jsonResponse('Old power error', false));
+    await act(async () => {
+      await result.current.command('/commands/power', { action: 'toggle' }, 'power');
+    });
+    expect(result.current.error).toBe('Old power error');
+
+    const manualStateResponse = deferred<Response>();
+    let stateRequestCount = 0;
+    let presetRequestCount = 0;
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (init?.method === 'POST') return Promise.resolve(jsonResponse({ success: true }));
+      if (url.endsWith('/state')) {
+        stateRequestCount += 1;
+        return stateRequestCount === 1
+          ? manualStateResponse.promise
+          : Promise.resolve(jsonResponse(receiverState({ volume: 44 })));
+      }
+      if (url.endsWith('/presets')) {
+        presetRequestCount += 1;
+        return Promise.resolve(jsonResponse([
+          {
+            id: presetRequestCount === 1 ? 'manual-old' : 'internal-new',
+            name: 'Preset',
+            description: '',
+            steps: [],
+          },
+        ]));
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    let manualRefreshPromise!: Promise<void>;
+    act(() => {
+      manualRefreshPromise = result.current.refresh();
+    });
+    await waitFor(() => expect(stateRequestCount).toBe(1));
+
+    await act(async () => {
+      await result.current.command(
+        '/commands/playback',
+        { action: 'pause' },
+        'playback:pause',
+      );
+    });
+    expect(result.current.state.volume).toBe(44);
+    expect(result.current.presets.map(({ id }) => id)).toEqual(['internal-new']);
+    expect(result.current.error).toBe('Old power error');
+
+    await act(async () => {
+      manualStateResponse.resolve(jsonResponse(receiverState({ volume: 11 })));
+      await manualRefreshPromise;
+    });
+    expect(result.current.state.volume).toBe(44);
+    expect(result.current.presets.map(({ id }) => id)).toEqual(['internal-new']);
+    expect(result.current.error).toBeNull();
+    unmount();
+  });
 });

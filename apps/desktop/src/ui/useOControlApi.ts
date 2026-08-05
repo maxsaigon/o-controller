@@ -56,6 +56,7 @@ export function useOControlApi(serviceUrl: string) {
   const mounted = useRef(false);
   const activeServiceUrl = useRef<string | null>(null);
   const lifecycleGeneration = useRef(0);
+  const stateRefreshGeneration = useRef(0);
   const commandGenerations = useRef(new Map<string, number>());
   const activeCommands = useRef(new Map<string, ActiveCommand[]>());
   const errorOrder = useRef(0);
@@ -80,20 +81,29 @@ export function useOControlApi(serviceUrl: string) {
 
   const refreshState = useCallback(
     async (endpoint: string, isCurrent: () => boolean) => {
+      const refreshGeneration = stateRefreshGeneration.current + 1;
+      stateRefreshGeneration.current = refreshGeneration;
+      const requestIsCurrent = () => (
+        isCurrent() && stateRefreshGeneration.current === refreshGeneration
+      );
+
       try {
         const [nextState, nextPresets] = await Promise.all([
           readJson<OControlState>(`${endpoint}/state`),
           readJson<PresetDefinition[]>(`${endpoint}/presets`).catch(() => []),
         ]);
-        if (!isCurrent()) return;
+        if (!isCurrent()) return false;
+        if (stateRefreshGeneration.current !== refreshGeneration) return true;
         setState(nextState);
         setPresets(nextPresets);
         setServiceReachable(true);
         setServiceError(null);
+        return true;
       } catch (err) {
-        if (!isCurrent()) return;
+        if (!requestIsCurrent()) return false;
         setServiceReachable(false);
         setServiceErrorMessage(err instanceof Error ? err.message : 'Service unavailable');
+        return false;
       }
     },
     [setServiceErrorMessage],
@@ -102,11 +112,20 @@ export function useOControlApi(serviceUrl: string) {
   const refresh = useCallback(async () => {
     const lifecycle = lifecycleGeneration.current;
     const endpoint = serviceUrl;
-    await refreshState(endpoint, () => (
+    const commandErrorCutoff = errorOrder.current;
+    const succeeded = await refreshState(endpoint, () => (
       mounted.current
       && lifecycleGeneration.current === lifecycle
       && activeServiceUrl.current === endpoint
     ));
+    if (succeeded) {
+      setCommandErrors((current) => {
+        const remaining = new Map(
+          [...current].filter(([, commandError]) => commandError.order > commandErrorCutoff),
+        );
+        return remaining.size === current.size ? current : remaining;
+      });
+    }
   }, [refreshState, serviceUrl]);
 
   useEffect(() => {
@@ -132,6 +151,7 @@ export function useOControlApi(serviceUrl: string) {
       if (lifecycleGeneration.current === lifecycle) {
         mounted.current = false;
         activeServiceUrl.current = null;
+        stateRefreshGeneration.current += 1;
         activeCommands.current.clear();
         commandGenerations.current.clear();
         clearDelayedRefresh();
