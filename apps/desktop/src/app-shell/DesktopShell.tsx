@@ -37,8 +37,8 @@ export function DesktopShell() {
   });
 
   const api = useOControlApi(serviceUrl);
-  const shortcutContext = useRef({ command: api.command, playback: api.state.playback });
-  shortcutContext.current = { command: api.command, playback: api.state.playback };
+  const shortcutContext = useRef({ active: true, command: api.command, playback: api.state.playback });
+  shortcutContext.current = { active: true, command: api.command, playback: api.state.playback };
   const pendingFor = (domain: string) => api.pendingCommandFor(domain);
 
   const presets = useMemo<PresetDefinition[]>(() => {
@@ -87,19 +87,26 @@ export function DesktopShell() {
       try {
         const statuses = await registerDesktopShortcuts({
           volumeUp: async () => {
+            if (!shortcutContext.current.active) return;
             await shortcutContext.current.command('/commands/volume', { value: 'up' }, 'volume:up');
           },
           volumeDown: async () => {
+            if (!shortcutContext.current.active) return;
             await shortcutContext.current.command('/commands/volume', { value: 'down' }, 'volume:down');
           },
           mute: async () => {
+            if (!shortcutContext.current.active) return;
             await shortcutContext.current.command('/commands/mute', { action: 'toggle' }, 'mute');
           },
           playPause: async () => {
+            if (!shortcutContext.current.active) return;
             const action = shortcutContext.current.playback === 'playing' ? 'pause' : 'play';
             await shortcutContext.current.command('/commands/playback', { action }, `playback:${action}`);
           },
-          togglePopover: toggleNativePopover,
+          togglePopover: async () => {
+            if (!shortcutContext.current.active) return;
+            await toggleNativePopover();
+          },
         });
         if (active) setShortcutStatus(statuses);
       } catch (error) {
@@ -110,6 +117,7 @@ export function DesktopShell() {
 
     return () => {
       active = false;
+      shortcutContext.current.active = false;
       const cleanup = enqueueShortcutLifecycle(async () => {
         if (registrationStarted) await unregisterDesktopShortcuts();
       });

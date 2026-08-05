@@ -10,10 +10,12 @@ type ShortcutActions = Record<ShortcutId, () => void | Promise<void>>;
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((done, fail) => {
     resolve = done;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 const mocks = vi.hoisted(() => ({
@@ -275,6 +277,44 @@ describe('DesktopShell navigation', () => {
       await secondView.findByRole('status', { name: 'Volume up: Registered' }),
     ).toBeInTheDocument();
     expect(secondView.queryByRole('status', { name: /Stale failure/ })).not.toBeInTheDocument();
+  });
+
+  it('neutralizes stale handlers and recovers the next mount after cleanup rejects', async () => {
+    const cleanup = deferred<void>();
+    const oldCommand = vi.fn(async () => true);
+    const newCommand = vi.fn(async () => true);
+    mocks.api.command = oldCommand;
+    mocks.shortcuts.unregister.mockReturnValueOnce(cleanup.promise);
+
+    const firstView = render(<DesktopShell />);
+    await waitFor(() => expect(mocks.shortcuts.register).toHaveBeenCalledTimes(1));
+    const oldActions = mocks.shortcuts.actions[0];
+    firstView.unmount();
+
+    await oldActions.volumeUp();
+    await oldActions.togglePopover();
+    expect(oldCommand).not.toHaveBeenCalled();
+    expect(mocks.shortcuts.toggle).not.toHaveBeenCalled();
+
+    mocks.api.command = newCommand;
+    const secondView = render(<DesktopShell />);
+    await waitFor(() => expect(mocks.shortcuts.unregister).toHaveBeenCalledTimes(1));
+    expect(mocks.shortcuts.register).toHaveBeenCalledTimes(1);
+
+    cleanup.reject(new Error('bulk cleanup failed'));
+    await waitFor(() => expect(mocks.shortcuts.register).toHaveBeenCalledTimes(2));
+    const newActions = mocks.shortcuts.actions[1];
+    await newActions.volumeUp();
+    expect(newCommand).toHaveBeenCalledWith(
+      '/commands/volume',
+      { value: 'up' },
+      'volume:up',
+    );
+
+    fireEvent.click(secondView.getByRole('button', { name: 'Settings' }));
+    expect(
+      await secondView.findByRole('status', { name: 'Volume up: Registered' }),
+    ).toBeInTheDocument();
   });
 
   it('keeps Input open on failure and closes it after a successful retry', async () => {
