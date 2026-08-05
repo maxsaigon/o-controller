@@ -542,6 +542,87 @@ describe('useOControlApi', () => {
     unmount();
   });
 
+  it('gates an interleaved duplicate until its older same-domain action settles', async () => {
+    const { result, unmount } = renderHook(() => useOControlApi('http://localhost:8787'));
+    await waitFor(() => expect(result.current.serviceReachable).toBe(true));
+
+    const firstInputResponse = deferred<Response>();
+    const secondInputResponse = deferred<Response>();
+    let postCount = 0;
+    let refreshCount = 0;
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (init?.method === 'POST') {
+        postCount += 1;
+        if (postCount === 1) return firstInputResponse.promise;
+        if (postCount === 2) return secondInputResponse.promise;
+        return Promise.resolve(jsonResponse({ success: true }));
+      }
+      if (url.endsWith('/state')) {
+        refreshCount += 1;
+        return Promise.resolve(jsonResponse(receiverState()));
+      }
+      if (url.endsWith('/presets')) return Promise.resolve(jsonResponse([]));
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    let firstInputPromise!: Promise<boolean>;
+    let secondInputPromise!: Promise<boolean>;
+    act(() => {
+      firstInputPromise = result.current.command(
+        '/commands/input',
+        { input: 'net' },
+        'input:net',
+      );
+      secondInputPromise = result.current.command(
+        '/commands/input',
+        { input: 'usb' },
+        'input:usb',
+      );
+    });
+
+    let interleavedDuplicateSucceeded: boolean | undefined;
+    await act(async () => {
+      interleavedDuplicateSucceeded = await result.current.command(
+        '/commands/input',
+        { input: 'net' },
+        'input:net',
+      );
+    });
+    expect(interleavedDuplicateSucceeded).toBe(false);
+    expect(postCount).toBe(2);
+    expect(result.current.pendingCommandFor('input')).toBe('input:usb');
+
+    await act(async () => {
+      secondInputResponse.resolve(jsonResponse({ success: true }));
+      await secondInputPromise;
+    });
+    expect(refreshCount).toBe(1);
+    expect(result.current.pendingCommandFor('input')).toBe('input:net');
+
+    let remainingDuplicateSucceeded: boolean | undefined;
+    await act(async () => {
+      remainingDuplicateSucceeded = await result.current.command(
+        '/commands/input',
+        { input: 'net' },
+        'input:net',
+      );
+    });
+    expect(remainingDuplicateSucceeded).toBe(false);
+    expect(postCount).toBe(2);
+
+    let firstInputSucceeded: boolean | undefined;
+    await act(async () => {
+      firstInputResponse.resolve(jsonResponse('Stale input failed', false));
+      firstInputSucceeded = await firstInputPromise;
+    });
+    expect(firstInputSucceeded).toBe(false);
+    expect(refreshCount).toBe(1);
+    expect(result.current.pendingCommandFor('input')).toBeNull();
+    expect(result.current.error).toBeNull();
+    unmount();
+  });
+
   it('does not clear one command domain error when an unrelated command refreshes', async () => {
     const { result, unmount } = renderHook(() => useOControlApi('http://localhost:8787'));
     await waitFor(() => expect(result.current.serviceReachable).toBe(true));

@@ -9,6 +9,11 @@ type ErrorState = {
   order: number;
 };
 
+type ActiveCommand = {
+  generation: number;
+  label: string;
+};
+
 function commandDomain(path: string) {
   if (path.startsWith('/presets/')) return 'preset';
   const domain = path.match(/^\/commands\/([^/]+)/)?.[1] ?? path;
@@ -52,7 +57,7 @@ export function useOControlApi(serviceUrl: string) {
   const activeServiceUrl = useRef<string | null>(null);
   const lifecycleGeneration = useRef(0);
   const commandGenerations = useRef(new Map<string, number>());
-  const activeCommands = useRef(new Map<string, { generation: number; label: string }>());
+  const activeCommands = useRef(new Map<string, ActiveCommand[]>());
   const errorOrder = useRef(0);
   const delayedRefreshTimers = useRef(new Map<string, number>());
 
@@ -193,12 +198,12 @@ export function useOControlApi(serviceUrl: string) {
       const lifecycle = lifecycleGeneration.current;
       const endpoint = serviceUrl;
       const domain = commandDomain(path);
-      const active = activeCommands.current.get(domain);
-      if (active?.label === label) return false;
+      const active = activeCommands.current.get(domain) ?? [];
+      if (active.some((candidate) => candidate.label === label)) return false;
 
       const generation = (commandGenerations.current.get(domain) ?? 0) + 1;
       commandGenerations.current.set(domain, generation);
-      activeCommands.current.set(domain, { generation, label });
+      activeCommands.current.set(domain, [...active, { generation, label }]);
       clearDelayedRefresh(domain);
 
       const isCurrent = () => (
@@ -249,12 +254,22 @@ export function useOControlApi(serviceUrl: string) {
         setCommandErrors((current) => new Map(current).set(domain, nextError));
         return false;
       } finally {
-        if (isCurrent()) {
-          activeCommands.current.delete(domain);
+        const endpointIsCurrent = (
+          mounted.current
+          && lifecycleGeneration.current === lifecycle
+          && activeServiceUrl.current === endpoint
+        );
+        if (endpointIsCurrent) {
+          const remaining = (activeCommands.current.get(domain) ?? [])
+            .filter((candidate) => candidate.generation !== generation);
+          if (remaining.length > 0) activeCommands.current.set(domain, remaining);
+          else activeCommands.current.delete(domain);
+
           setPendingCommands((current) => {
-            if (!current.has(domain)) return current;
             const next = new Map(current);
-            next.delete(domain);
+            const latestRemaining = remaining[remaining.length - 1];
+            if (latestRemaining) next.set(domain, latestRemaining.label);
+            else next.delete(domain);
             return next;
           });
         }
