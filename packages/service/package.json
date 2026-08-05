@@ -16,6 +16,7 @@
     "@fastify/websocket": "^11.0.0",
     "@o-control/eiscp": "*",
     "@o-control/shared": "*",
+    "@o-control/upnp": "*",
     "fastify": "^5.1.0",
     "pino": "^9.5.0",
     "zod": "^3.23.0"

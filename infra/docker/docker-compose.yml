@@ -10,6 +10,8 @@ services:
     environment:
       - ONKYO_HOST=${ONKYO_HOST:-192.168.1.50}
       - ONKYO_PORT=${ONKYO_PORT:-60128}
+      # Explicit opt-in: the published container port must listen beyond loopback.
+      - O_CONTROL_HOST=0.0.0.0
       - O_CONTROL_PORT=8787
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - MOCK_MODE=${MOCK_MODE:-false}

@@ -4,6 +4,26 @@ import type { OControlEvent, OControlState, PresetDefinition } from '@o-control/
 
 const EMPTY_STATE: OControlState = DEFAULT_STATE;
 
+type ErrorState = {
+  message: string;
+  order: number;
+};
+
+type ActiveCommand = {
+  generation: number;
+  label: string;
+};
+
+export type RawCommandResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+function commandDomain(path: string) {
+  if (path.startsWith('/presets/')) return 'preset';
+  const domain = path.match(/^\/commands\/([^/]+)/)?.[1] ?? path;
+  return domain === 'mute' ? 'volume' : domain;
+}
+
 function eventUrl(serviceUrl: string) {
   const url = new URL(serviceUrl);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -30,35 +50,121 @@ export function useOControlApi(serviceUrl: string) {
   const [state, setState] = useState<OControlState>(EMPTY_STATE);
   const [presets, setPresets] = useState<PresetDefinition[]>([]);
   const [serviceReachable, setServiceReachable] = useState(false);
-  const [pendingCommand, setPendingCommand] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const mounted = useRef(true);
+  const [pendingCommands, setPendingCommands] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  );
+  const [serviceError, setServiceError] = useState<ErrorState | null>(null);
+  const [commandErrors, setCommandErrors] = useState<ReadonlyMap<string, ErrorState>>(
+    () => new Map(),
+  );
+  const mounted = useRef(false);
+  const activeServiceUrl = useRef<string | null>(null);
+  const lifecycleGeneration = useRef(0);
+  const stateRefreshGeneration = useRef(0);
+  const commandGenerations = useRef(new Map<string, number>());
+  const activeCommands = useRef(new Map<string, ActiveCommand[]>());
+  const errorOrder = useRef(0);
+  const delayedRefreshTimers = useRef(new Map<string, number>());
+  const rawCommandControllers = useRef(new Set<AbortController>());
+
+  const clearDelayedRefresh = useCallback((domain?: string) => {
+    if (domain !== undefined) {
+      const timer = delayedRefreshTimers.current.get(domain);
+      if (timer !== undefined) window.clearTimeout(timer);
+      delayedRefreshTimers.current.delete(domain);
+      return;
+    }
+
+    for (const timer of delayedRefreshTimers.current.values()) window.clearTimeout(timer);
+    delayedRefreshTimers.current.clear();
+  }, []);
+
+  const setServiceErrorMessage = useCallback((message: string) => {
+    errorOrder.current += 1;
+    setServiceError({ message, order: errorOrder.current });
+  }, []);
+
+  const refreshState = useCallback(
+    async (endpoint: string, isCurrent: () => boolean) => {
+      const refreshGeneration = stateRefreshGeneration.current + 1;
+      stateRefreshGeneration.current = refreshGeneration;
+      const requestIsCurrent = () => (
+        isCurrent() && stateRefreshGeneration.current === refreshGeneration
+      );
+
+      try {
+        const [nextState, nextPresets] = await Promise.all([
+          readJson<OControlState>(`${endpoint}/state`),
+          readJson<PresetDefinition[]>(`${endpoint}/presets`).catch(() => []),
+        ]);
+        if (!isCurrent()) return false;
+        if (stateRefreshGeneration.current !== refreshGeneration) return true;
+        setState(nextState);
+        setPresets(nextPresets);
+        setServiceReachable(true);
+        setServiceError(null);
+        return true;
+      } catch (err) {
+        if (!requestIsCurrent()) return false;
+        setServiceReachable(false);
+        setServiceErrorMessage(err instanceof Error ? err.message : 'Service unavailable');
+        return false;
+      }
+    },
+    [setServiceErrorMessage],
+  );
 
   const refresh = useCallback(async () => {
-    try {
-      const [nextState, nextPresets] = await Promise.all([
-        readJson<OControlState>(`${serviceUrl}/state`),
-        readJson<PresetDefinition[]>(`${serviceUrl}/presets`).catch(() => []),
-      ]);
-      if (!mounted.current) return;
-      setState(nextState);
-      setPresets(nextPresets);
-      setServiceReachable(true);
-      setError(null);
-    } catch (err) {
-      if (!mounted.current) return;
-      setServiceReachable(false);
-      setError(err instanceof Error ? err.message : 'Service unavailable');
+    const lifecycle = lifecycleGeneration.current;
+    const endpoint = serviceUrl;
+    const commandErrorCutoff = errorOrder.current;
+    const succeeded = await refreshState(endpoint, () => (
+      mounted.current
+      && lifecycleGeneration.current === lifecycle
+      && activeServiceUrl.current === endpoint
+    ));
+    if (succeeded) {
+      setCommandErrors((current) => {
+        const remaining = new Map(
+          [...current].filter(([, commandError]) => commandError.order > commandErrorCutoff),
+        );
+        return remaining.size === current.size ? current : remaining;
+      });
     }
-  }, [serviceUrl]);
+  }, [refreshState, serviceUrl]);
 
   useEffect(() => {
+    const lifecycle = lifecycleGeneration.current + 1;
+    lifecycleGeneration.current = lifecycle;
     mounted.current = true;
-    void refresh();
+    activeServiceUrl.current = serviceUrl;
+    setState(EMPTY_STATE);
+    setPresets([]);
+    setServiceReachable(false);
+    setServiceError(null);
+    setCommandErrors(new Map());
+    setPendingCommands(new Map());
+    activeCommands.current.clear();
+    commandGenerations.current.clear();
+    void refreshState(serviceUrl, () => (
+      mounted.current
+      && lifecycleGeneration.current === lifecycle
+      && activeServiceUrl.current === serviceUrl
+    ));
+
     return () => {
-      mounted.current = false;
+      if (lifecycleGeneration.current === lifecycle) {
+        mounted.current = false;
+        activeServiceUrl.current = null;
+        stateRefreshGeneration.current += 1;
+        activeCommands.current.clear();
+        commandGenerations.current.clear();
+        clearDelayedRefresh();
+        for (const controller of rawCommandControllers.current) controller.abort();
+        rawCommandControllers.current.clear();
+      }
     };
-  }, [refresh]);
+  }, [clearDelayedRefresh, refreshState, serviceUrl]);
 
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -66,19 +172,22 @@ export function useOControlApi(serviceUrl: string) {
     let closed = false;
 
     function connect() {
+      if (closed) return;
       try {
         socket = new WebSocket(eventUrl(serviceUrl));
       } catch {
+        if (closed) return;
         setServiceReachable(false);
         return;
       }
 
       socket.addEventListener('open', () => {
-        setServiceReachable(true);
-        setError(null);
+        if (closed) return;
+        setServiceError(null);
       });
 
       socket.addEventListener('message', (message) => {
+        if (closed) return;
         try {
           const event = JSON.parse(message.data as string) as OControlEvent;
           if (event.type === 'state.changed') {
@@ -86,7 +195,7 @@ export function useOControlApi(serviceUrl: string) {
             setServiceReachable(true);
           }
         } catch {
-          setError('Received malformed event from service');
+          setServiceErrorMessage('Received malformed event from service');
         }
       });
 
@@ -97,6 +206,7 @@ export function useOControlApi(serviceUrl: string) {
       });
 
       socket.addEventListener('error', () => {
+        if (closed) return;
         setServiceReachable(false);
       });
     }
@@ -105,31 +215,156 @@ export function useOControlApi(serviceUrl: string) {
 
     return () => {
       closed = true;
-      if (retryTimer) window.clearTimeout(retryTimer);
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
       socket?.close();
     };
-  }, [serviceUrl]);
+  }, [serviceUrl, setServiceErrorMessage]);
 
   const command = useCallback(
-    async (path: string, body: unknown, label: string) => {
-      setPendingCommand(label);
-      setError(null);
+    async (path: string, body: unknown, label: string): Promise<boolean> => {
+      const lifecycle = lifecycleGeneration.current;
+      const endpoint = serviceUrl;
+      const domain = commandDomain(path);
+      const active = activeCommands.current.get(domain) ?? [];
+      if (active.some((candidate) => candidate.label === label)) return false;
+
+      const generation = (commandGenerations.current.get(domain) ?? 0) + 1;
+      commandGenerations.current.set(domain, generation);
+      activeCommands.current.set(domain, [...active, { generation, label }]);
+      clearDelayedRefresh(domain);
+
+      const isCurrent = () => (
+        mounted.current
+        && lifecycleGeneration.current === lifecycle
+        && activeServiceUrl.current === endpoint
+        && commandGenerations.current.get(domain) === generation
+      );
+
+      setPendingCommands((current) => {
+        const next = new Map(current);
+        next.delete(domain);
+        next.set(domain, label);
+        return next;
+      });
+      setCommandErrors((current) => {
+        if (!current.has(domain)) return current;
+        const next = new Map(current);
+        next.delete(domain);
+        return next;
+      });
+      setServiceError(null);
       try {
-        await readJson(`${serviceUrl}${path}`, {
+        await readJson(`${endpoint}${path}`, {
           method: 'POST',
           body: JSON.stringify(body),
         });
-        await refresh();
+        if (!isCurrent()) return false;
+        await refreshState(endpoint, isCurrent);
+        if (!isCurrent()) return false;
+
         // Fallback refresh for delayed receiver response
-        setTimeout(() => refresh(), 1500);
+        const timer = window.setTimeout(() => {
+          delayedRefreshTimers.current.delete(domain);
+          if (isCurrent()) {
+            void refreshState(endpoint, isCurrent);
+          }
+        }, 1500);
+        delayedRefreshTimers.current.set(domain, timer);
+        return true;
       } catch (err) {
-        setError(err instanceof Error ? err.message : `Command failed: ${label}`);
+        if (!isCurrent()) return false;
+        errorOrder.current += 1;
+        const nextError = {
+          message: err instanceof Error ? err.message : `Command failed: ${label}`,
+          order: errorOrder.current,
+        };
+        setCommandErrors((current) => new Map(current).set(domain, nextError));
+        return false;
       } finally {
-        setPendingCommand(null);
+        const endpointIsCurrent = (
+          mounted.current
+          && lifecycleGeneration.current === lifecycle
+          && activeServiceUrl.current === endpoint
+        );
+        if (endpointIsCurrent) {
+          const remaining = (activeCommands.current.get(domain) ?? [])
+            .filter((candidate) => candidate.generation !== generation);
+          if (remaining.length > 0) activeCommands.current.set(domain, remaining);
+          else activeCommands.current.delete(domain);
+
+          setPendingCommands((current) => {
+            const next = new Map(current);
+            const latestRemaining = remaining[remaining.length - 1];
+            if (latestRemaining) next.set(domain, latestRemaining.label);
+            else next.delete(domain);
+            return next;
+          });
+        }
       }
     },
-    [refresh, serviceUrl],
+    [clearDelayedRefresh, refreshState, serviceUrl],
   );
+
+  const rawCommand = useCallback(
+    async (path: string, body: unknown, signal?: AbortSignal): Promise<RawCommandResult> => {
+      const lifecycle = lifecycleGeneration.current;
+      const endpoint = serviceUrl;
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      signal?.addEventListener('abort', abort, { once: true });
+      if (signal?.aborted) controller.abort();
+      rawCommandControllers.current.add(controller);
+
+      const isCurrent = () => (
+        mounted.current
+        && lifecycleGeneration.current === lifecycle
+        && activeServiceUrl.current === endpoint
+        && !controller.signal.aborted
+      );
+
+      try {
+        await readJson(`${endpoint}${path}`, {
+          method: 'POST',
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+        return isCurrent()
+          ? { ok: true }
+          : { ok: false, error: 'Command cancelled' };
+      } catch (err) {
+        return {
+          ok: false,
+          error: controller.signal.aborted
+            ? 'Command cancelled'
+            : err instanceof Error
+              ? err.message
+              : 'Command failed',
+        };
+      } finally {
+        signal?.removeEventListener('abort', abort);
+        rawCommandControllers.current.delete(controller);
+      }
+    },
+    [serviceUrl],
+  );
+
+  const pendingCommand = useMemo(
+    () => pendingCommands.values().next().value ?? null,
+    [pendingCommands],
+  );
+
+  const pendingCommandFor = useCallback(
+    (domain: string) => pendingCommands.get(domain) ?? null,
+    [pendingCommands],
+  );
+
+  const error = useMemo(() => {
+    let latest = serviceError;
+    for (const commandError of commandErrors.values()) {
+      if (latest === null || commandError.order > latest.order) latest = commandError;
+    }
+    return latest?.message ?? null;
+  }, [commandErrors, serviceError]);
 
   const connectionLabel = useMemo(() => {
     if (!serviceReachable) return 'Service offline';
@@ -143,9 +378,11 @@ export function useOControlApi(serviceUrl: string) {
     presets,
     serviceReachable,
     pendingCommand,
+    pendingCommandFor,
     error,
     connectionLabel,
     refresh,
     command,
+    rawCommand,
   };
 }

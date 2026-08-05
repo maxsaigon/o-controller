@@ -58,6 +58,7 @@ Required values:
 ```env
 ONKYO_HOST=192.168.1.104    # Your CR-N775 static IP
 ONKYO_PORT=60128             # Default eISCP port
+O_CONTROL_HOST=0.0.0.0       # Explicitly expose the API from this container
 O_CONTROL_PORT=8787          # Service API port
 LOG_LEVEL=info               # info for production, debug for troubleshooting
 MOCK_MODE=false              # Must be false for real receiver

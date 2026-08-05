@@ -1,17 +1,28 @@
-import { ArrowLeft, RotateCw, Plus, Search, CheckCircle, XCircle, Trash2, Edit2, Play } from 'lucide-react';
+import { ArrowLeft, RotateCw, Plus, Search, CheckCircle, XCircle, Trash2, Edit2, Play, ChevronRight } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import type { ShortcutStatus } from '../native/shortcuts';
 import type { useServiceManager, ServiceConfig, ReceiverDevice, TestConnectionResult } from '../ui/useServiceManager';
 
 type Props = {
   serviceManager: ReturnType<typeof useServiceManager>;
   serviceReachable: boolean;
   error: string | null;
+  shortcutStatus: ShortcutStatus[];
   onBack: () => void;
   onTest: () => void;
+  onOpenInput: () => void;
 };
 
-export function ServiceSettings({ serviceManager, serviceReachable, error, onBack, onTest }: Props) {
+export function ServiceSettings({
+  serviceManager,
+  serviceReachable,
+  error,
+  shortcutStatus,
+  onBack,
+  onTest,
+  onOpenInput,
+}: Props) {
   const [draft, setDraft] = useState<ServiceConfig>({ serviceMode: 'local' });
   const [isScanning, setIsScanning] = useState(false);
   const [discoveredDevices, setDiscoveredDevices] = useState<ReceiverDevice[]>([]);
@@ -116,6 +127,14 @@ export function ServiceSettings({ serviceManager, serviceReachable, error, onBac
         </span>
       </div>
 
+      <button className="settings-link" type="button" onClick={onOpenInput}>
+        <span>
+          <strong>Input source</strong>
+          <small>Choose CD, Network, USB, Bluetooth, Line, or Tuner</small>
+        </span>
+        <ChevronRight size={16} />
+      </button>
+
       <div className="settings-section">
         <div className="section-header">
           <h3>Devices</h3>
@@ -161,26 +180,33 @@ export function ServiceSettings({ serviceManager, serviceReachable, error, onBac
               <div
                 key={device.id}
                 className={`device-card opt-b ${isActive ? 'active' : ''}`}
-                onClick={() => !isActive && handleUseDevice(device.id)}
               >
-                <div className="device-info">
-                  <strong className="device-name-mock">
-                    {isActive && <span className="active-dot">●</span>}
-                    {device.name}
-                  </strong>
-                  <span>{device.host}:{device.port}</span>
-                  {testResults[device.id] && (
-                    <span className={`status ${testResults[device.id].ok ? 'ok' : 'error'}`} style={{ fontSize: '10px', marginTop: '2px' }}>
-                      {testResults[device.id].ok ? `Online (${testResults[device.id].latencyMs ?? '?'}ms)` : 'Offline'}
-                    </span>
-                  )}
-                </div>
-                <div className="device-actions" onClick={e => e.stopPropagation()}>
-                  <button className="ghost-button" onClick={() => handleTestDevice(device)} disabled={testingId === device.id}>
+                <button
+                  type="button"
+                  className="device-select-button"
+                  aria-label={`Use ${device.name} receiver`}
+                  aria-pressed={isActive}
+                  onClick={() => !isActive && handleUseDevice(device.id)}
+                >
+                  <span className="device-info">
+                    <strong className="device-name-mock">
+                      {isActive && <span className="active-dot">●</span>}
+                      {device.name}
+                    </strong>
+                    <span>{device.host}:{device.port}</span>
+                    {testResults[device.id] && (
+                      <span className={`status ${testResults[device.id].ok ? 'ok' : 'error'}`} style={{ fontSize: '10px', marginTop: '2px' }}>
+                        {testResults[device.id].ok ? `Online (${testResults[device.id].latencyMs ?? '?'}ms)` : 'Offline'}
+                      </span>
+                    )}
+                  </span>
+                </button>
+                <div className="device-actions">
+                  <button type="button" className="ghost-button" onClick={() => handleTestDevice(device)} disabled={testingId === device.id}>
                     {testingId === device.id ? '...' : 'Test'}
                   </button>
-                  <button className="ghost-button icon-btn" onClick={() => setEditingDevice(device)}><Edit2 size={14} /></button>
-                  <button className="ghost-button icon-btn danger" onClick={() => handleDeleteDevice(device.id)}><Trash2 size={14} /></button>
+                  <button type="button" className="ghost-button icon-btn" aria-label={`Edit ${device.name}`} onClick={() => setEditingDevice(device)}><Edit2 size={14} /></button>
+                  <button type="button" className="ghost-button icon-btn danger" aria-label={`Delete ${device.name}`} onClick={() => handleDeleteDevice(device.id)}><Trash2 size={14} /></button>
                 </div>
               </div>
             );
@@ -214,6 +240,32 @@ export function ServiceSettings({ serviceManager, serviceReachable, error, onBac
           </div>
         )}
       </div>
+
+      <section className="settings-section shortcut-diagnostics" aria-labelledby="shortcut-diagnostics-heading">
+        <div className="section-header">
+          <h3 id="shortcut-diagnostics-heading">Global shortcuts</h3>
+        </div>
+        <ul className="shortcut-status-list">
+          {shortcutStatus.map((shortcut) => {
+            const state = shortcut.registered ? 'Registered' : shortcut.error ? 'Failed' : 'Pending';
+            const accessibleState = shortcut.error ? `${state} — ${shortcut.error}` : state;
+            return (
+              <li key={shortcut.id}>
+                <span className="shortcut-label">{shortcut.label}</span>
+                <kbd>{shortcut.display}</kbd>
+                <span
+                  className={`shortcut-state ${shortcut.registered ? 'ok' : shortcut.error ? 'error' : ''}`}
+                  role="status"
+                  aria-label={`${shortcut.label}: ${accessibleState}`}
+                  title={shortcut.error ?? undefined}
+                >
+                  {state}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
 
       <div className="tip-box">
         💡 <strong>Network Standby:</strong> Ensure "Network Standby" is enabled on your receiver (Setup → Network → Network Standby → On) to support powering it on from the app.

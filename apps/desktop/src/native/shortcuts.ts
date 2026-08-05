@@ -78,12 +78,13 @@ export async function registerDesktopShortcuts(actions: ShortcutActions): Promis
   for (const definition of SHORTCUTS) {
     try {
       const alreadyRegistered = await isRegistered(definition.accelerator);
-      if (!alreadyRegistered) {
-        await register(definition.accelerator, (event) => {
-          if (event.state !== 'Pressed') return;
-          void actions[definition.id]();
-        });
+      if (alreadyRegistered) {
+        await unregister(definition.accelerator);
       }
+      await register(definition.accelerator, (event) => {
+        if (event.state !== 'Pressed') return;
+        void actions[definition.id]();
+      });
       results.push(statusFor(definition, true, null));
     } catch (err) {
       results.push(statusFor(definition, false, asErrorMessage(err)));

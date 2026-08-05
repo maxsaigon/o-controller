@@ -673,18 +673,6 @@ app.setErrorHandler((error: FastifyError, request, reply) => {
   });
 });
 
-// ── Start ────────────────────────────────────────────────────
-export async function start(): Promise<void> {
-  try {
-    await app.listen({ port: config.O_CONTROL_PORT, host: '0.0.0.0' });
-    receiver.connect();
-    app.log.info(`O-Control service listening on port ${config.O_CONTROL_PORT}`);
-  } catch (err) {
-    app.log.fatal(err);
-    process.exit(1);
-  }
-}
-
 /**
  * Safely strips the 3-line proprietary header from the Onkyo CGI response.
  * Scans for common image magic bytes first (JPEG, PNG, BMP) as a primary check.
@@ -733,15 +721,17 @@ dlnaDiscovery.on('serverFound', (server) => {
   app.log.info({ name: server.friendlyName, host: server.host }, 'DLNA server discovered');
 });
 
-// Start discovery when server starts
-dlnaDiscovery.start();
-
 // ── Receiver AVTransport Discovery ────────────────────────────
 let cachedAVTransportUrl: string | null = null;
+let receiverDiscoveryController: AbortController | null = null;
 
 async function getReceiverAVTransportUrl(): Promise<string | null> {
   if (cachedAVTransportUrl) return cachedAVTransportUrl;
-  const url = await discoverReceiverAVTransport(config.ONKYO_HOST);
+  receiverDiscoveryController ??= new AbortController();
+  const url = await discoverReceiverAVTransport(
+    config.ONKYO_HOST,
+    receiverDiscoveryController.signal,
+  );
   if (url) {
     cachedAVTransportUrl = url;
     app.log.info({ url }, 'Discovered receiver AVTransport control URL');
@@ -749,8 +739,85 @@ async function getReceiverAVTransportUrl(): Promise<string | null> {
   return url;
 }
 
-// Eagerly discover on startup
-void getReceiverAVTransportUrl();
+function cleanupRuntime(): void {
+  clearMetadataTimers();
+
+  if (fetchTimeoutId) {
+    clearTimeout(fetchTimeoutId);
+    fetchTimeoutId = null;
+  }
+  currentFetchController?.abort();
+  currentFetchController = null;
+
+  if (mockEndTimer) {
+    clearTimeout(mockEndTimer);
+    mockEndTimer = undefined;
+  }
+
+  receiverDiscoveryController?.abort();
+  receiverDiscoveryController = null;
+  dlnaDiscovery.stop();
+  receiver.destroy();
+}
+
+async function closeRuntime(): Promise<void> {
+  if (app.server.listening) {
+    try {
+      await app.close();
+    } finally {
+      cleanupRuntime();
+    }
+    return;
+  }
+  cleanupRuntime();
+}
+
+app.addHook('onClose', async () => {
+  cleanupRuntime();
+});
+
+let startPromise: Promise<void> | null = null;
+let stopRequested = false;
+
+export async function stop(): Promise<void> {
+  stopRequested = true;
+  if (startPromise) {
+    await startPromise.catch(() => {});
+  }
+  await closeRuntime();
+}
+
+async function startRuntime(): Promise<void> {
+  await app.listen({ port: config.O_CONTROL_PORT, host: config.O_CONTROL_HOST });
+
+  try {
+    if (stopRequested) {
+      await closeRuntime();
+      return;
+    }
+
+    receiver.connect();
+
+    if (!config.MOCK_MODE) {
+      dlnaDiscovery.start();
+      void getReceiverAVTransportUrl();
+    }
+
+    app.log.info(`O-Control service listening on ${config.O_CONTROL_HOST}:${config.O_CONTROL_PORT}`);
+  } catch (err) {
+    try {
+      await closeRuntime();
+    } catch (closeErr) {
+      app.log.error(closeErr, 'Failed to close service after startup failure');
+    }
+    throw err;
+  }
+}
+
+export function start(): Promise<void> {
+  startPromise ??= startRuntime();
+  return startPromise;
+}
 
 app.get('/dlna/servers', async (_request, reply) => {
   const servers = dlnaDiscovery.getServers().map(s => ({
@@ -777,7 +844,7 @@ app.post('/dlna/browse', async (request, reply) => {
 
   if (!server) {
     reply.code(404);
-    return { error: 'Server not found. Try /dlna/scan first.' };
+    return { success: false, error: 'Server not found. Try /dlna/scan first.' };
   }
 
   try {
@@ -790,7 +857,7 @@ app.post('/dlna/browse', async (request, reply) => {
   } catch (err) {
     app.log.error(err, 'DLNA browse failed');
     reply.code(502);
-    return { error: 'Failed to browse DLNA server' };
+    return { success: false, error: 'Failed to browse DLNA server' };
   }
 });
 
@@ -847,6 +914,7 @@ async function playDlnaTrackInternal(track: PlayQueueItem, log: typeof app.log):
   if (!avTransportUrl) {
     log.error('Could not discover receiver AVTransport URL');
     return {
+      success: false,
       error: 'Failed to discover receiver AVTransport service',
       detail: `No UPnP device description found on ${config.ONKYO_HOST}. Is the receiver powered on?`,
     };
@@ -888,7 +956,11 @@ async function playDlnaTrackInternal(track: PlayQueueItem, log: typeof app.log):
     if (!setRes.ok) {
       const text = await setRes.text().catch(() => '');
       log.error({ status: setRes.status, body: text.substring(0, 200) }, 'SetAVTransportURI failed');
-      return { error: 'SetAVTransportURI failed', detail: `Status ${setRes.status}: ${text.substring(0, 200)}` };
+      return {
+        success: false,
+        error: 'SetAVTransportURI failed',
+        detail: `Status ${setRes.status}: ${text.substring(0, 200)}`,
+      };
     }
 
     log.info({ avTransportUrl }, 'Sending Play');
@@ -905,7 +977,11 @@ async function playDlnaTrackInternal(track: PlayQueueItem, log: typeof app.log):
     if (!playRes.ok) {
       const text = await playRes.text().catch(() => '');
       log.error({ status: playRes.status, body: text.substring(0, 200) }, 'Play failed');
-      return { error: 'Play command failed', detail: `Status ${playRes.status}: ${text.substring(0, 200)}` };
+      return {
+        success: false,
+        error: 'Play command failed',
+        detail: `Status ${playRes.status}: ${text.substring(0, 200)}`,
+      };
     }
 
     log.info({ url: track.resourceUrl, avTransport: avTransportUrl }, 'DLNA playback started');
@@ -914,7 +990,11 @@ async function playDlnaTrackInternal(track: PlayQueueItem, log: typeof app.log):
     cachedAVTransportUrl = null;
     const msg = err instanceof Error ? err.message : String(err);
     log.error({ err: msg, avTransportUrl }, 'AVTransport request failed');
-    return { error: 'AVTransport request failed', detail: msg };
+    return {
+      success: false,
+      error: 'AVTransport request failed',
+      detail: msg,
+    };
   }
 }
 
@@ -948,7 +1028,7 @@ app.post('/dlna/play', async (request, reply) => {
 
   if (!res.success) {
     reply.code(502);
-    return { error: res.error, detail: res.detail };
+    return { success: false, error: res.error, detail: res.detail };
   }
 
   return { success: true, avTransportUrl: res.avTransportUrl };

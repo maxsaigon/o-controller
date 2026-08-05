@@ -18,6 +18,8 @@ type Props = {
 };
 
 export function InputSelector({ value, disabled, pendingCommand, onChange }: Props) {
+  const anyInputPending = pendingCommand?.startsWith('input:') ?? false;
+
   return (
     <section className="sheet-panel input-sheet" aria-label="Input picker">
       <div className="sheet-heading">
@@ -36,7 +38,7 @@ export function InputSelector({ value, disabled, pendingCommand, onChange }: Pro
               type="button"
               role="gridcell"
               aria-pressed={selected}
-              disabled={disabled || pending}
+              disabled={disabled || anyInputPending}
               onClick={() => onChange(input.id)}
             >
               <Icon size={20} />

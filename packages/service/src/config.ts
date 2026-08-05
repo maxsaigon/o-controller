@@ -6,6 +6,7 @@ import { z } from 'zod';
 export const configSchema = z.object({
   ONKYO_HOST: z.string().min(1).default('192.168.1.50'),
   ONKYO_PORT: z.coerce.number().int().positive().default(60128),
+  O_CONTROL_HOST: z.string().min(1).default('127.0.0.1'),
   O_CONTROL_PORT: z.coerce.number().int().positive().default(8787),
   LOG_LEVEL: z.enum(['silent', 'fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   MOCK_MODE: z
