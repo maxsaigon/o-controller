@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { OControlState } from '@o-control/shared';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ShortcutDefinition, ShortcutStatus } from '../native/shortcuts';
 import { receiverState } from '../test/fixtures';
 import { DesktopShell } from './DesktopShell';
 
@@ -36,7 +37,15 @@ const mocks = vi.hoisted(() => ({
     serviceUrl: string;
   },
   shortcuts: {
-    register: vi.fn(async () => []),
+    definitions: [
+      {
+        id: 'volumeUp',
+        accelerator: 'CommandOrControl+Shift+ArrowUp',
+        display: 'Cmd/Ctrl Shift Up',
+        label: 'Volume up',
+      },
+    ] satisfies ShortcutDefinition[],
+    register: vi.fn<() => Promise<ShortcutStatus[]>>(async () => []),
     unregister: vi.fn(async () => undefined),
     toggle: vi.fn(),
   },
@@ -47,7 +56,7 @@ const globalStyles = readFileSync('src/styles/global.css', 'utf8');
 vi.mock('../ui/useOControlApi', () => ({ useOControlApi: () => mocks.api }));
 vi.mock('../ui/useServiceManager', () => ({ useServiceManager: () => mocks.manager }));
 vi.mock('../native/shortcuts', () => ({
-  SHORTCUTS: [],
+  SHORTCUTS: mocks.shortcuts.definitions,
   registerDesktopShortcuts: mocks.shortcuts.register,
   unregisterDesktopShortcuts: mocks.shortcuts.unregister,
   toggleNativePopover: mocks.shortcuts.toggle,
@@ -82,6 +91,9 @@ describe('DesktopShell navigation', () => {
     mocks.manager.isTauri = false;
     mocks.netListProps = null;
     mocks.shortcuts.register.mockClear();
+    mocks.shortcuts.register.mockResolvedValue([
+      { ...mocks.shortcuts.definitions[0], registered: true, error: null },
+    ]);
     mocks.shortcuts.unregister.mockClear();
     mocks.shortcuts.toggle.mockClear();
   });
@@ -145,6 +157,19 @@ describe('DesktopShell navigation', () => {
       { input: 'net' },
       'input:net',
     );
+  });
+
+  it('shows the collected global shortcut registration diagnostics in Settings', async () => {
+    mocks.shortcuts.register.mockResolvedValue([
+      { ...mocks.shortcuts.definitions[0], registered: false, error: 'Already registered' },
+    ]);
+    render(<DesktopShell />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+
+    expect(
+      await screen.findByRole('status', { name: 'Volume up: Failed — Already registered' }),
+    ).toBeInTheDocument();
   });
 
   it('keeps Input open on failure and closes it after a successful retry', async () => {

@@ -103,6 +103,7 @@ export function DesktopShell() {
             serviceManager={serviceManager}
             serviceReachable={api.serviceReachable}
             error={serviceManager.status?.error || api.error}
+            shortcutStatus={shortcutStatus}
             onBack={() => setSettingsOpen(false)}
             onTest={api.refresh}
             onOpenInput={() => {

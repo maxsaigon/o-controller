@@ -837,6 +837,22 @@ kbd {
 .device-card.opt-b.active {
   background: rgba(69, 170, 255, 0.05);
 }
+.device-select-button {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.device-select-button:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid #45aaff;
+  outline-offset: 3px;
+}
 .active-dot {
   color: #45aaff;
   margin-right: 6px;
@@ -865,6 +881,34 @@ kbd {
   padding: 0 8px;
   min-height: 28px;
   font-size: 11px;
+}
+.shortcut-status-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.shortcut-status-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #aaa7a2;
+  font-size: 11px;
+}
+.shortcut-label {
+  overflow: hidden;
+  color: #e9e5de;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shortcut-state.ok {
+  color: #45aaff;
+}
+.shortcut-state.error {
+  color: #ff8d82;
 }
 .icon-btn {
   background: transparent;
