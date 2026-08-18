@@ -12,6 +12,24 @@ các model Onkyo khác và thiết bị của nhiều hãng âm thanh khác.
 > kiểm thử trên thiết bị thật; các model hoặc thương hiệu khác chưa được bảo đảm
 > tương thích.
 
+## Ảnh chụp ứng dụng
+
+### Home
+
+![O-Control Home hiển thị các album nổi bật trong Music Server](docs/screenshots/o-control-home.jpg)
+
+### Library
+
+![O-Control Library dùng để duyệt thư mục, album, nghệ sĩ và thể loại](docs/screenshots/o-control-library.jpg)
+
+### Player
+
+![O-Control Player hiển thị Now Playing, thông tin tín hiệu và hàng đợi](docs/screenshots/o-control-player.jpg)
+
+### Settings
+
+![O-Control Settings dùng để quản lý receiver và giao diện](docs/screenshots/o-control-settings.png)
+
 ## Tính năng
 
 ### Quản lý Music Server
