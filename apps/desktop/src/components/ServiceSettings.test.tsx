@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { ShortcutStatus } from '../native/shortcuts';
 import type { ReceiverDevice, ServiceConfig } from '../ui/useServiceManager';
+import type { ThemePreference } from '../ui/theme';
 import { ServiceSettings } from './ServiceSettings';
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -18,27 +18,9 @@ const devices: ReceiverDevice[] = [
   },
 ];
 
-const shortcutStatus: ShortcutStatus[] = [
-  {
-    id: 'volumeUp',
-    accelerator: 'CommandOrControl+Shift+ArrowUp',
-    display: 'Cmd/Ctrl Shift Up',
-    label: 'Volume up',
-    registered: true,
-    error: null,
-  },
-  {
-    id: 'mute',
-    accelerator: 'CommandOrControl+Shift+M',
-    display: 'Cmd/Ctrl Shift M',
-    label: 'Mute toggle',
-    registered: false,
-    error: 'Shortcut is already in use',
-  },
-];
-
 function renderSettings(config: ServiceConfig = { serviceMode: 'local', devices }) {
   const updateConfig = vi.fn(async () => undefined);
+  const onThemeChange = vi.fn<(theme: ThemePreference) => void>();
   const serviceManager = {
     status: null,
     config,
@@ -51,25 +33,41 @@ function renderSettings(config: ServiceConfig = { serviceMode: 'local', devices 
       serviceManager={serviceManager}
       serviceReachable
       error={null}
-      shortcutStatus={shortcutStatus}
+      themePreference="auto"
+      onThemeChange={onThemeChange}
       onBack={vi.fn()}
-      onTest={vi.fn()}
       onOpenInput={vi.fn()}
     />,
   );
 
-  return { ...view, updateConfig };
+  return { ...view, updateConfig, onThemeChange };
 }
 
 describe('ServiceSettings accessibility', () => {
-  it('announces registered and failed global shortcut diagnostics', () => {
+  it('does not show shortcut diagnostics', () => {
     renderSettings();
+    expect(screen.queryByRole('heading', { name: 'Global shortcuts' })).not.toBeInTheDocument();
+  });
 
-    expect(screen.getByRole('heading', { name: 'Global shortcuts' })).toBeInTheDocument();
-    expect(screen.getByRole('status', { name: 'Volume up: Registered' })).toHaveTextContent('Registered');
-    expect(
-      screen.getByRole('status', { name: 'Mute toggle: Failed — Shortcut is already in use' }),
-    ).toHaveTextContent('Failed');
+  it('saves the DAC chip name used by Audio Signal', () => {
+    const { updateConfig } = renderSettings({ serviceMode: 'local', digitalToAnalog: 'AK4493' });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Digital to Analog' }), {
+      target: { value: 'ESS Sabre 9038PRO' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+      digitalToAnalog: 'ESS Sabre 9038PRO',
+    }));
+  });
+
+  it('offers automatic, light, and dark appearance choices', () => {
+    const { onThemeChange } = renderSettings();
+
+    expect(screen.getByRole('group', { name: 'Theme' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Auto' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Dark' }));
+
+    expect(onThemeChange).toHaveBeenCalledWith('dark');
   });
 
   it('offers saved-device selection as a keyboard-focusable button with separate named actions', () => {
@@ -88,5 +86,35 @@ describe('ServiceSettings accessibility', () => {
     expect(updateConfig).toHaveBeenCalledWith(
       expect.objectContaining({ activeDeviceId: 'living-room' }),
     );
+  });
+
+  it('saves a custom name for the active device', () => {
+    const { updateConfig } = renderSettings({
+      serviceMode: 'local',
+      activeDeviceId: 'living-room',
+      devices,
+    });
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Device name' }), {
+      target: { value: 'Studio Receiver' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+      devices: [expect.objectContaining({ id: 'living-room', name: 'Studio Receiver' })],
+    }));
+  });
+
+  it('allows naming the receiver in browser preview without a saved device', () => {
+    const { updateConfig } = renderSettings({ serviceMode: 'external' });
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Device name' }), {
+      target: { value: 'Preview Receiver' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+      deviceName: 'Preview Receiver',
+    }));
   });
 });

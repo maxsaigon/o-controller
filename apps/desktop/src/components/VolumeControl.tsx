@@ -2,6 +2,8 @@ import { useEffect, useState, useRef } from 'react';
 import { Minus, Plus, Volume2, VolumeX } from 'lucide-react';
 
 type Props = {
+  compact?: boolean;
+  sliderLabel?: string;
   volume: number;
   muted: boolean;
   disabled: boolean;
@@ -12,7 +14,7 @@ type Props = {
   onMute: () => void;
 };
 
-export function VolumeControl({ volume, muted, disabled, pending, onStepDown, onStepUp, onCommit, onMute }: Props) {
+export function VolumeControl({ compact = false, sliderLabel = 'Player volume', volume, muted, disabled, pending, onStepDown, onStepUp, onCommit, onMute }: Props) {
   const [draft, setDraft] = useState(volume);
   const [committing, setCommitting] = useState(false);
   const lastCommitted = useRef(volume);
@@ -45,6 +47,30 @@ export function VolumeControl({ volume, muted, disabled, pending, onStepDown, on
   };
 
   const controlsDisabled = disabled || pending || committing;
+
+  if (compact) {
+    return (
+      <section className="player-volume" aria-label="Volume">
+        <button className={`player-volume-mute ${muted ? 'active' : ''}`} type="button" title={muted ? 'Unmute' : 'Mute'} disabled={controlsDisabled} onClick={onMute}>
+          {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+        </button>
+        <input
+          aria-label={sliderLabel}
+          className="volume-slider"
+          type="range"
+          min="0"
+          max="100"
+          value={draft}
+          disabled={controlsDisabled}
+          onChange={(event) => setDraft(Number(event.currentTarget.value))}
+          onPointerUp={() => void handleCommit()}
+          onBlur={() => void handleCommit()}
+          onKeyUp={(event) => { if (event.key === 'Enter') void handleCommit(); }}
+        />
+        <span>{draft}</span>
+      </section>
+    );
+  }
 
   return (
     <section className="sheet-panel volume-sheet" aria-label="Volume">

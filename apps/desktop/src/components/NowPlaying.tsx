@@ -23,6 +23,14 @@ function hashArtworkIdentity(value: string): string {
   return `${(forwardHash >>> 0).toString(36)}-${(reverseHash >>> 0).toString(36)}`;
 }
 
+export function getCoverArtSrc(nowPlaying: NowPlayingMeta, serviceUrl: string): string | null {
+  if (!nowPlaying.coverArtUrl) return null;
+  const artworkIdentity = hashArtworkIdentity(
+    `${nowPlaying.title}\0${nowPlaying.artist}\0${nowPlaying.coverArtUrl}`,
+  );
+  return `${serviceUrl}/cover-art?t=${artworkIdentity}`;
+}
+
 function Artwork({ src }: ArtworkProps) {
   const [failed, setFailed] = useState(false);
 
@@ -50,7 +58,7 @@ function Artwork({ src }: ArtworkProps) {
 }
 
 function parseTime(timeStr: string): number {
-  if (!timeStr) return 0;
+  if (!/^\d{1,3}:\d{2}(?::\d{2})?$/.test(timeStr)) return 0;
   const parts = timeStr.split(':').map(Number);
   if (parts.length === 2) return parts[0] * 60 + parts[1];
   if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
@@ -58,7 +66,7 @@ function parseTime(timeStr: string): number {
 }
 
 function formatTimeDisplay(timeStr: string): string {
-  if (!timeStr) return '--:--';
+  if (!/^\d{1,3}:\d{2}(?::\d{2})?$/.test(timeStr)) return '--:--';
   const parts = timeStr.split(':');
   if (parts.length === 3) {
     const hours = parseInt(parts[0], 10);
@@ -70,46 +78,60 @@ function formatTimeDisplay(timeStr: string): string {
 
 export function NowPlaying({ playback, nowPlaying, serviceUrl }: Props) {
   const hasTitle = nowPlaying.title.trim().length > 0;
-  const detail = [nowPlaying.artist, nowPlaying.album].filter(Boolean).join(' - ');
-  const formatDetail = [nowPlaying.format, nowPlaying.sampleRate, nowPlaying.bitDepth].filter(Boolean).join(' / ');
+  const artist = nowPlaying.artist.trim();
+  const album = nowPlaying.album.trim();
+  const trackNumber = /^\d+$/.test(nowPlaying.trackNumber.trim()) ? nowPlaying.trackNumber.trim() : '';
 
   const currentSecs = parseTime(nowPlaying.currentTime);
   const totalSecs = parseTime(nowPlaying.totalTime);
   const progressPercent = totalSecs > 0 ? Math.min(100, Math.max(0, (currentSecs / totalSecs) * 100)) : 0;
 
-  const artworkIdentity = nowPlaying.coverArtUrl
-    ? hashArtworkIdentity(`${nowPlaying.title}\0${nowPlaying.artist}\0${nowPlaying.coverArtUrl}`)
-    : null;
-  const coverArtSrc = artworkIdentity
-    ? `${serviceUrl}/cover-art?t=${artworkIdentity}`
-    : null;
+  const coverArtSrc = getCoverArtSrc(nowPlaying, serviceUrl);
+  const playbackLabel = playback === 'playing'
+    ? 'Now playing'
+    : playback === 'paused'
+      ? 'Paused'
+      : 'Ready to play';
 
   return (
     <section className="now-playing" aria-label="Now playing">
       <div className="artwork-container" data-testid="artwork-frame">
-        <Artwork key={coverArtSrc ?? 'artwork-unavailable'} src={coverArtSrc} />
-      </div>
-
-      <div className="progress-container">
-        <span className="time-text">{formatTimeDisplay(nowPlaying.currentTime)}</span>
-        <div className="progress-bar-bg">
-          <div className="progress-bar-fill" style={{ width: `${progressPercent}%` }} />
+        {coverArtSrc ? <img className="artwork-ambient" src={coverArtSrc} alt="" aria-hidden="true" /> : null}
+        <div className="artwork-surface">
+          <Artwork key={coverArtSrc ?? 'artwork-unavailable'} src={coverArtSrc} />
         </div>
-        <span className="time-text">{formatTimeDisplay(nowPlaying.totalTime)}</span>
       </div>
 
       <div className="track-copy">
+        <div className={`playback-state ${playback === 'playing' ? 'is-playing' : ''}`}>
+          <span aria-hidden="true" />
+          {playbackLabel}
+        </div>
         <p className="track-title" title={hasTitle ? nowPlaying.title : 'No track info'}>
           {hasTitle ? nowPlaying.title : 'No track info'}
         </p>
-        {detail ? (
-          <p className="track-detail" title={detail}>
-            {detail}
-          </p>
-        ) : (
-          <p className="track-detail muted-text">Metadata unavailable</p>
-        )}
-        {formatDetail ? <p className="track-format">{formatDetail}</p> : null}
+        <p className="track-artist" title={artist || 'Unknown artist'}>{artist || 'Unknown artist'}</p>
+        <p className="track-album" title={album || 'Album metadata unavailable'}>
+          {album || 'Album metadata unavailable'}
+          {trackNumber ? <span> · Track {trackNumber}</span> : null}
+        </p>
+      </div>
+
+      <div className="progress-container">
+        <div
+          className="progress-bar-bg"
+          role="progressbar"
+          aria-label="Track progress"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(progressPercent)}
+        >
+          <div className="progress-bar-fill" style={{ width: `${progressPercent}%` }} />
+        </div>
+        <div className="progress-time-row">
+          <span className="time-text">{formatTimeDisplay(nowPlaying.currentTime)}</span>
+          <span className="time-text">{formatTimeDisplay(nowPlaying.totalTime)}</span>
+        </div>
       </div>
     </section>
   );

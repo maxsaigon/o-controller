@@ -19,12 +19,13 @@ type Props = {
 
 export function InputSelector({ value, disabled, pendingCommand, onChange }: Props) {
   const anyInputPending = pendingCommand?.startsWith('input:') ?? false;
+  const selectedInput = INPUTS.find((input) => input.id === value);
 
   return (
     <section className="sheet-panel input-sheet" aria-label="Input picker">
       <div className="sheet-heading">
-        <h2>Input</h2>
-        <span>{value === 'unknown' ? 'No input selected' : 'Choose source'}</span>
+        <h2>Choose input</h2>
+        <span>{selectedInput ? `${selectedInput.label} selected` : 'No input selected'}</span>
       </div>
       <div className="input-grid" role="grid" aria-label="Input selector">
         {INPUTS.map((input) => {

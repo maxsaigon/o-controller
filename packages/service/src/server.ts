@@ -21,14 +21,38 @@ import { StateStore } from './state-store.js';
 import { ReceiverClient } from './receiver-client.js';
 import { findPreset, loadPresets } from './presets.js';
 import { DLNADiscovery, browseAll, discoverReceiverAVTransport } from '@o-control/upnp';
+import { normalizeMusicCatalog } from './music-catalog.js';
+import { ArtworkCache } from './artwork-cache.js';
 
 const config = loadConfig();
 
 const app = Fastify({
+  bodyLimit: 8 * 1024 * 1024,
   logger: {
     level: config.LOG_LEVEL,
   },
 });
+
+const musicArtworkCache = new ArtworkCache();
+const pendingArtwork = new Map<string, Promise<{ buffer: Buffer; contentType: string } | null>>();
+const missingArtwork = new Map<string, number>();
+const artworkUriIndex = new Map<string, string>();
+const MISSING_ARTWORK_TTL_MS = 10 * 60 * 1000;
+const MAX_ARTWORK_URI_ENTRIES = 2_000;
+
+function rememberArtworkUris(serverId: string, items: Array<{ id: string; albumArtURI?: string }>): void {
+  for (const item of items) {
+    if (!item.albumArtURI) continue;
+    const key = `${serverId}\0${item.id}`;
+    artworkUriIndex.delete(key);
+    artworkUriIndex.set(key, item.albumArtURI);
+  }
+  while (artworkUriIndex.size > MAX_ARTWORK_URI_ENTRIES) {
+    const oldest = artworkUriIndex.keys().next().value as string | undefined;
+    if (!oldest) break;
+    artworkUriIndex.delete(oldest);
+  }
+}
 
 // ── State & Receiver ─────────────────────────────────────────
 const store = new StateStore();
@@ -79,7 +103,10 @@ interface PlayQueueItem {
   resourceUrl: string;
   title?: string;
   artist?: string;
+  album?: string;
   mimeType?: string;
+  albumArtURI?: string;
+  size?: number;
 }
 
 let playQueue: PlayQueueItem[] = [];
@@ -87,6 +114,8 @@ let playQueueIndex = -1;
 let isDlnaMode = false;
 let userStopped = false;
 let mockEndTimer: ReturnType<typeof setTimeout> | undefined;
+let receiverReadyAt = 0;
+const RECEIVER_BOOT_GRACE_MS = 3500;
 
 // Wire receiver events to state store
 receiver.on('packet', (packet: ParsedPacket) => {
@@ -123,6 +152,10 @@ async function sendQueries(commands: readonly string[], context: string): Promis
   }
 }
 
+function markReceiverPowerOn(): void {
+  receiverReadyAt = Math.max(receiverReadyAt, Date.now() + RECEIVER_BOOT_GRACE_MS);
+}
+
 async function queryInitialState(): Promise<void> {
   await sendQueries(CORE_QUERIES, 'initial-state');
 }
@@ -156,6 +189,10 @@ let lastTitle = store.getState().nowPlaying.title;
 let currentFetchController: AbortController | null = null;
 let fetchTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
+export function hasUsableCoverArt(buffer: Buffer): boolean {
+  return buffer.length > 0;
+}
+
 /**
  * Background worker to fetch the album art CGI with retry mechanism.
  */
@@ -180,9 +217,11 @@ async function resolveMusicServerCoverArt(targetTitle: string, retryCount = 0): 
     if (res.ok) {
       const rawBuffer = Buffer.from(await res.arrayBuffer());
       const cleaned = stripOnkyoHeaders(rawBuffer);
-      cachedCoverArt = cleaned;
-      store.setCoverArt('/cover-art?t=' + Date.now());
-      return;
+      if (hasUsableCoverArt(cleaned)) {
+        cachedCoverArt = cleaned;
+        store.setCoverArt('/cover-art?t=' + Date.now());
+        return;
+      }
     }
   } catch (err: any) {
     if (err.name === 'AbortError') return;
@@ -213,6 +252,11 @@ function triggerCoverArtResolution(title: string): void {
   cachedCoverArt = null;
 
   if (title) {
+    const activeTrack = isDlnaMode ? playQueue[playQueueIndex] : undefined;
+    if (activeTrack?.albumArtURI && (!activeTrack.title || activeTrack.title === title)) {
+      store.setCoverArt(activeTrack.albumArtURI);
+      return;
+    }
     if (config.MOCK_MODE) {
       // Mock mode sets cover art immediately
       store.setCoverArt('/cover-art?t=' + Date.now());
@@ -309,7 +353,22 @@ app.get('/health', async () => {
 
 // Full state
 app.get('/state', async () => {
-  return store.getState();
+  return {
+    ...store.getState(),
+    queue: {
+      currentIndex: playQueueIndex,
+      items: playQueue.map(({ resourceUrl, title, artist, album, albumArtURI, size }) => ({
+        resourceUrl, title, artist, album, albumArtURI, size,
+      })),
+    },
+  };
+});
+
+app.post('/dlna/queue/clear', async () => {
+  const current = playQueue[playQueueIndex];
+  playQueue = current ? [current] : [];
+  playQueueIndex = current ? 0 : -1;
+  return { success: true };
 });
 
 // Presets list
@@ -339,14 +398,30 @@ app.get('/cover-art', async (request, reply) => {
     }
   }
 
-  // 2. If the receiver provided a URL, use that URL directly.
+  // 2. Proxy remote artwork through the local service. The desktop WebView CSP
+  // intentionally does not allow arbitrary LAN image origins.
   if (state.nowPlaying.coverArtUrl?.startsWith('http') && !state.nowPlaying.coverArtUrl.includes('album_art.cgi')) {
-    reply.redirect(state.nowPlaying.coverArtUrl);
-    return;
+    try {
+      const artworkUrl = new URL(state.nowPlaying.coverArtUrl);
+      if (artworkUrl.protocol === 'http:' || artworkUrl.protocol === 'https:') {
+        const response = await fetch(artworkUrl, { signal: AbortSignal.timeout(5000) });
+        const contentType = response.headers.get('content-type') || 'image/jpeg';
+        if (response.ok && contentType.toLowerCase().startsWith('image/')) {
+          const buffer = Buffer.from(await response.arrayBuffer());
+          if (buffer.length > 0 && buffer.length <= 5 * 1024 * 1024) {
+            reply.header('Cache-Control', 'private, max-age=21600');
+            reply.type(contentType).send(buffer);
+            return;
+          }
+        }
+      }
+    } catch {
+      // Fall through to receiver artwork and the final 404.
+    }
   }
 
   // 3. Return cached cover art if available
-  if (cachedCoverArt) {
+  if (cachedCoverArt && hasUsableCoverArt(cachedCoverArt)) {
     reply.type('image/jpeg').send(cachedCoverArt);
     return;
   }
@@ -365,9 +440,11 @@ app.get('/cover-art', async (request, reply) => {
       if (res.ok) {
         const rawBuffer = Buffer.from(await res.arrayBuffer());
         const cleaned = stripOnkyoHeaders(rawBuffer);
-        cachedCoverArt = cleaned;
-        reply.type('image/jpeg').send(cleaned);
-        return;
+        if (hasUsableCoverArt(cleaned)) {
+          cachedCoverArt = cleaned;
+          reply.type('image/jpeg').send(cleaned);
+          return;
+        }
       }
     } catch (e) {
       // Fetch failed or timed out, fall through
@@ -399,6 +476,7 @@ app.post('/commands/power', async (request, reply) => {
   }
 
   await receiver.send(cmd);
+  if (cmd === COMMANDS.POWER_ON) markReceiverPowerOn();
   return { success: true, command: cmd };
 });
 
@@ -547,6 +625,7 @@ app.post<{ Params: { id: string } }>('/presets/:id/run', async (request, reply) 
 
   for (const step of preset.steps) {
     await receiver.send(step.command);
+    if (step.command === COMMANDS.POWER_ON) markReceiverPowerOn();
     if (step.delayMs) {
       await new Promise((r) => setTimeout(r, step.delayMs));
     }
@@ -741,6 +820,7 @@ async function getReceiverAVTransportUrl(): Promise<string | null> {
 
 function cleanupRuntime(): void {
   clearMetadataTimers();
+  receiverReadyAt = 0;
 
   if (fetchTimeoutId) {
     clearTimeout(fetchTimeoutId);
@@ -849,6 +929,7 @@ app.post('/dlna/browse', async (request, reply) => {
 
   try {
     const result = await browseAll(server.contentDirectoryUrl, body.objectId);
+    rememberArtworkUris(body.serverId, result.items);
     return {
       title: body.objectId === '0' ? server.friendlyName : undefined,
       items: result.items,
@@ -860,6 +941,116 @@ app.post('/dlna/browse', async (request, reply) => {
     return { success: false, error: 'Failed to browse DLNA server' };
   }
 });
+
+const musicCatalogQuerySchema = z.object({
+  serverId: z.string(),
+  objectId: z.string().default('0'),
+});
+
+/** Return normalized album/artist views for one lazily browsed MusicServer container. */
+app.get('/music/catalog', async (request, reply) => {
+  const query = musicCatalogQuerySchema.parse(request.query);
+  const server = dlnaDiscovery.getServer(query.serverId);
+  if (!server) {
+    reply.code(404);
+    return { success: false, error: 'Server not found. Try /dlna/scan first.' };
+  }
+
+  try {
+    const result = await browseAll(server.contentDirectoryUrl, query.objectId);
+    rememberArtworkUris(query.serverId, result.items);
+    return {
+      server: { id: server.id, friendlyName: server.friendlyName },
+      objectId: query.objectId,
+      ...normalizeMusicCatalog(result.items),
+    };
+  } catch (err) {
+    app.log.error(err, 'Music catalog browse failed');
+    reply.code(502);
+    return { success: false, error: 'Failed to load MusicServer catalog' };
+  }
+});
+
+const dlnaArtworkQuerySchema = z.object({ serverId: z.string(), objectId: z.string() });
+
+async function resolveDlnaArtwork(serverId: string, objectId: string): Promise<{ buffer: Buffer; contentType: string } | null> {
+  const key = `${serverId}\0${objectId}`;
+  const cached = musicArtworkCache.get(key);
+  if (cached) return cached;
+  const missingUntil = missingArtwork.get(key);
+  if (missingUntil && missingUntil > Date.now()) return null;
+  if (missingUntil) missingArtwork.delete(key);
+  const existing = pendingArtwork.get(key);
+  if (existing) return existing;
+
+  const request = (async () => {
+    const server = dlnaDiscovery.getServer(serverId);
+    if (!server) return null;
+    let artUri = artworkUriIndex.get(key);
+    if (artUri) {
+      artworkUriIndex.delete(key);
+      artworkUriIndex.set(key, artUri);
+    } else {
+      const result = await browseAll(server.contentDirectoryUrl, objectId);
+      artUri = result.items.find((item) => item.albumArtURI)?.albumArtURI;
+    }
+    if (!artUri) {
+      missingArtwork.set(key, Date.now() + MISSING_ARTWORK_TTL_MS);
+      return null;
+    }
+    const artworkUrl = new URL(artUri, server.contentDirectoryUrl);
+    if (artworkUrl.protocol !== 'http:' && artworkUrl.protocol !== 'https:') {
+      missingArtwork.set(key, Date.now() + MISSING_ARTWORK_TTL_MS);
+      return null;
+    }
+    const response = await fetch(artworkUrl, { signal: AbortSignal.timeout(5000) });
+    if (!response.ok) {
+      missingArtwork.set(key, Date.now() + MISSING_ARTWORK_TTL_MS);
+      return null;
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    if (buffer.length === 0 || buffer.length > 5 * 1024 * 1024 || !contentType.startsWith('image/')) {
+      missingArtwork.set(key, Date.now() + MISSING_ARTWORK_TTL_MS);
+      return null;
+    }
+    const value = { buffer, contentType };
+    musicArtworkCache.set(key, value);
+    missingArtwork.delete(key);
+    return value;
+  })().finally(() => pendingArtwork.delete(key));
+  pendingArtwork.set(key, request);
+  return request;
+}
+
+app.get('/dlna/artwork', async (request, reply) => {
+  const query = dlnaArtworkQuerySchema.parse(request.query);
+  if (!dlnaDiscovery.getServer(query.serverId)) {
+    reply.code(404);
+    return { success: false, error: 'Server not found' };
+  }
+  try {
+    const artwork = await resolveDlnaArtwork(query.serverId, query.objectId);
+    if (!artwork) {
+      reply.code(404);
+      return { success: false, error: 'Artwork not found' };
+    }
+    reply.header('Content-Type', artwork.contentType);
+    reply.header('Cache-Control', 'private, max-age=21600');
+    return reply.send(artwork.buffer);
+  } catch (err) {
+    app.log.warn({ err, objectId: query.objectId }, 'Failed to resolve DLNA artwork');
+    reply.code(502);
+    return { success: false, error: 'Artwork fetch failed' };
+  }
+});
+
+app.get('/dlna/artwork-cache/stats', async () => ({
+  ...musicArtworkCache.stats(),
+  uriEntries: artworkUriIndex.size,
+  pending: pendingArtwork.size,
+  negativeEntries: [...missingArtwork.values()].filter((expiresAt) => expiresAt > Date.now()).length,
+}));
 
 function escapeXml(str: string): string {
   return str
@@ -874,22 +1065,68 @@ const dlnaPlaySchema = z.object({
   resourceUrl: z.string().url(),
   title: z.string().optional(),
   artist: z.string().optional(),
+  album: z.string().optional(),
   mimeType: z.string().optional(),
+  albumArtURI: z.string().url().optional(),
+  size: z.number().int().nonnegative().optional(),
   playlist: z.array(z.object({
     resourceUrl: z.string().url(),
     title: z.string().optional(),
     artist: z.string().optional(),
+    album: z.string().optional(),
     mimeType: z.string().optional(),
+    albumArtURI: z.string().url().optional(),
+    size: z.number().int().nonnegative().optional(),
   })).optional(),
 });
+
+export function isTransitionNotAvailableFault(body: string): boolean {
+  return /<errorCode>\s*701\s*<\/errorCode>/i.test(body)
+    || /Transition not available/i.test(body);
+}
+
+/**
+ * A receiver can briefly reject AVTransport requests while it is booting or
+ * switching to Network input. These failures are safe to retry for a short
+ * bounded window; malformed media URLs and other 4xx responses are not.
+ */
+export function isRetryableAVTransportFailure(status: number, body: string): boolean {
+  return status >= 500
+    || isTransitionNotAvailableFault(body)
+    || /no current (transport|media)|not ready|temporarily unavailable/i.test(body);
+}
+
+const AVTRANSPORT_RETRY_DELAYS_MS = [750, 1500, 3000] as const;
+
+function applyQueuedTrackState(track: PlayQueueItem): void {
+  if (track.title) store.reduce({ command: 'NTI', rawPayload: track.title });
+  if (track.artist) store.reduce({ command: 'NAT', rawPayload: track.artist });
+  if (track.album) store.reduce({ command: 'NAL', rawPayload: track.album });
+  store.reduce({ command: 'NST', rawPayload: 'P--' });
+  if (track.albumArtURI) store.setCoverArt(track.albumArtURI);
+  store.setFileSize(track.size);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 async function playDlnaTrackInternal(track: PlayQueueItem, log: typeof app.log): Promise<{ success: boolean; avTransportUrl?: string; error?: string; detail?: string }> {
   if (config.MOCK_MODE) {
     log.info({ url: track.resourceUrl }, 'Mock DLNA playback started');
     store.reduce({ command: 'NTI', rawPayload: track.title || 'Mock Title' });
     store.reduce({ command: 'NAT', rawPayload: track.artist || 'Mock Artist' });
+    if (track.album) store.reduce({ command: 'NAL', rawPayload: track.album });
     store.reduce({ command: 'NST', rawPayload: 'P--' }); // playing status
+    if (track.albumArtURI) store.setCoverArt(track.albumArtURI);
+    store.setFileSize(track.size);
     return { success: true };
+  }
+
+  const bootDelay = receiverReadyAt - Date.now();
+  if (bootDelay > 0) {
+    log.info({ delayMs: bootDelay }, 'Waiting for receiver network input after power on');
+    await delay(bootDelay);
   }
 
   const currentInput = store.getState().input;
@@ -903,22 +1140,13 @@ async function playDlnaTrackInternal(track: PlayQueueItem, log: typeof app.log):
 
   const titleXml = track.title ? `<dc:title>${escapeXml(track.title)}</dc:title>` : '';
   const artistXml = track.artist ? `<upnp:artist>${escapeXml(track.artist)}</upnp:artist>` : '';
+  const albumXml = track.album ? `<upnp:album>${escapeXml(track.album)}</upnp:album>` : '';
   const mimeType = track.mimeType ?? 'audio/mpeg';
   const escapedUrl = escapeXml(track.resourceUrl);
   const escapedMime = escapeXml(mimeType);
 
-  const didl = `<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1">${titleXml}${artistXml}<upnp:class>object.item.audioItem.musicTrack</upnp:class><res protocolInfo="http-get:*:${escapedMime}:*">${escapedUrl}</res></item></DIDL-Lite>`;
+  const didl = `<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1">${titleXml}${artistXml}${albumXml}<upnp:class>object.item.audioItem.musicTrack</upnp:class><res protocolInfo="http-get:*:${escapedMime}:*">${escapedUrl}</res></item></DIDL-Lite>`;
   const escapedDidl = escapeXml(didl);
-
-  const avTransportUrl = await getReceiverAVTransportUrl();
-  if (!avTransportUrl) {
-    log.error('Could not discover receiver AVTransport URL');
-    return {
-      success: false,
-      error: 'Failed to discover receiver AVTransport service',
-      detail: `No UPnP device description found on ${config.ONKYO_HOST}. Is the receiver powered on?`,
-    };
-  }
 
   const setURIBody = `<?xml version="1.0" encoding="utf-8"?>
 <s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
@@ -939,63 +1167,88 @@ async function playDlnaTrackInternal(track: PlayQueueItem, log: typeof app.log):
       <Speed>1</Speed>
     </u:Play>
   </s:Body>
-</s:Envelope>`;
+  </s:Envelope>`;
 
-  try {
-    log.info({ avTransportUrl }, 'Sending SetAVTransportURI');
-    const setRes = await fetch(avTransportUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/xml; charset="utf-8"',
-        'SOAPAction': '"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI"',
-      },
-      body: setURIBody,
-      signal: AbortSignal.timeout(5000),
-    });
-
-    if (!setRes.ok) {
-      const text = await setRes.text().catch(() => '');
-      log.error({ status: setRes.status, body: text.substring(0, 200) }, 'SetAVTransportURI failed');
-      return {
-        success: false,
-        error: 'SetAVTransportURI failed',
-        detail: `Status ${setRes.status}: ${text.substring(0, 200)}`,
+  let lastError: { error: string; detail: string } | null = null;
+  for (let attempt = 0; attempt <= AVTRANSPORT_RETRY_DELAYS_MS.length; attempt++) {
+    const avTransportUrl = await getReceiverAVTransportUrl();
+    if (!avTransportUrl) {
+      lastError = {
+        error: 'Failed to discover receiver AVTransport service',
+        detail: `No UPnP device description found on ${config.ONKYO_HOST}. Is the receiver powered on?`,
       };
+    } else {
+      try {
+        log.info({ avTransportUrl, attempt: attempt + 1 }, 'Sending SetAVTransportURI');
+        const setRes = await fetch(avTransportUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'text/xml; charset="utf-8"',
+            'SOAPAction': '"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI"',
+          },
+          body: setURIBody,
+          signal: AbortSignal.timeout(5000),
+        });
+
+        if (!setRes.ok) {
+          const text = await setRes.text().catch(() => '');
+          lastError = {
+            error: 'SetAVTransportURI failed',
+            detail: `Status ${setRes.status}: ${text.substring(0, 200)}`,
+          };
+          if (!isRetryableAVTransportFailure(setRes.status, text)) {
+            log.error({ status: setRes.status, body: text.substring(0, 200) }, 'SetAVTransportURI failed');
+            return { success: false, ...lastError };
+          }
+        } else {
+          log.info({ avTransportUrl, attempt: attempt + 1 }, 'Sending Play');
+          const playRes = await fetch(avTransportUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'text/xml; charset="utf-8"',
+              'SOAPAction': '"urn:schemas-upnp-org:service:AVTransport:1#Play"',
+            },
+            body: playBody,
+            signal: AbortSignal.timeout(5000),
+          });
+
+          if (!playRes.ok) {
+            const text = await playRes.text().catch(() => '');
+            if (isTransitionNotAvailableFault(text)) {
+              log.info({ status: playRes.status, avTransportUrl }, 'Receiver accepted the new URI while Play transition was still in progress');
+              applyQueuedTrackState(track);
+              return { success: true, avTransportUrl };
+            }
+            lastError = {
+              error: 'Play command failed',
+              detail: `Status ${playRes.status}: ${text.substring(0, 200)}`,
+            };
+            if (!isRetryableAVTransportFailure(playRes.status, text)) {
+              log.error({ status: playRes.status, body: text.substring(0, 200) }, 'Play failed');
+              return { success: false, ...lastError };
+            }
+          } else {
+            log.info({ url: track.resourceUrl, avTransport: avTransportUrl }, 'DLNA playback started');
+            applyQueuedTrackState(track);
+            return { success: true, avTransportUrl };
+          }
+        }
+      } catch (err) {
+        cachedAVTransportUrl = null;
+        const msg = err instanceof Error ? err.message : String(err);
+        lastError = { error: 'AVTransport request failed', detail: msg };
+        log.warn({ err: msg, avTransportUrl, attempt: attempt + 1 }, 'AVTransport request failed; retrying if receiver is still starting');
+      }
     }
 
-    log.info({ avTransportUrl }, 'Sending Play');
-    const playRes = await fetch(avTransportUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/xml; charset="utf-8"',
-        'SOAPAction': '"urn:schemas-upnp-org:service:AVTransport:1#Play"',
-      },
-      body: playBody,
-      signal: AbortSignal.timeout(5000),
-    });
-
-    if (!playRes.ok) {
-      const text = await playRes.text().catch(() => '');
-      log.error({ status: playRes.status, body: text.substring(0, 200) }, 'Play failed');
-      return {
-        success: false,
-        error: 'Play command failed',
-        detail: `Status ${playRes.status}: ${text.substring(0, 200)}`,
-      };
+    if (attempt < AVTRANSPORT_RETRY_DELAYS_MS.length) {
+      cachedAVTransportUrl = null;
+      await delay(AVTRANSPORT_RETRY_DELAYS_MS[attempt]);
     }
-
-    log.info({ url: track.resourceUrl, avTransport: avTransportUrl }, 'DLNA playback started');
-    return { success: true, avTransportUrl };
-  } catch (err) {
-    cachedAVTransportUrl = null;
-    const msg = err instanceof Error ? err.message : String(err);
-    log.error({ err: msg, avTransportUrl }, 'AVTransport request failed');
-    return {
-      success: false,
-      error: 'AVTransport request failed',
-      detail: msg,
-    };
   }
+
+  log.error(lastError, 'AVTransport playback failed after retries');
+  return { success: false, ...lastError! };
 }
 
 app.post('/dlna/play', async (request, reply) => {
@@ -1013,7 +1266,7 @@ app.post('/dlna/play', async (request, reply) => {
     playQueue = body.playlist;
     playQueueIndex = playQueue.findIndex(track => track.resourceUrl === body.resourceUrl);
   } else {
-    playQueue = [{ resourceUrl: body.resourceUrl, title: body.title, artist: body.artist, mimeType: body.mimeType }];
+    playQueue = [{ resourceUrl: body.resourceUrl, title: body.title, artist: body.artist, album: body.album, mimeType: body.mimeType, albumArtURI: body.albumArtURI, size: body.size }];
     playQueueIndex = 0;
   }
 
@@ -1021,7 +1274,10 @@ app.post('/dlna/play', async (request, reply) => {
     resourceUrl: body.resourceUrl,
     title: body.title,
     artist: body.artist,
+    album: body.album,
     mimeType: body.mimeType,
+    albumArtURI: body.albumArtURI,
+    size: body.size,
   };
 
   const res = await playDlnaTrackInternal(currentTrack, app.log);

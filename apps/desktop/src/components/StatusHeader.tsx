@@ -10,18 +10,24 @@ type Props = {
 
 export function StatusHeader({ state, serviceReachable, pendingCommand, onPower }: Props) {
   const connected = serviceReachable && state.connected;
+  const poweredOn = connected && state.power === 'on';
+  const statusLabel = !connected
+    ? 'Receiver not connected'
+    : poweredOn
+      ? 'Receiver on'
+      : state.power === 'off'
+        ? 'Receiver standby'
+        : 'Receiver status unknown';
   const powerPending = pendingCommand === 'power';
 
   return (
     <header className="status-header">
       <span
-        className={`status-dot ${connected ? 'connected' : 'offline'}`}
+        className={`status-dot ${poweredOn ? 'connected' : 'offline'}`}
         role="status"
-        aria-label={connected ? 'Receiver connected' : 'Receiver not connected'}
-        title={connected ? 'Connected' : 'Not connected'}
+        aria-label={statusLabel}
+        title={statusLabel.replace('Receiver ', '')}
       />
-
-      <h1>CR-N775</h1>
 
       <button
         className={`header-icon-button power ${state.power === 'on' ? 'active' : ''}`}

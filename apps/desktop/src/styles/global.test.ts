@@ -39,6 +39,15 @@ function declarationFor(selector: string, property: string): string {
   return value as string;
 }
 
+function firstDeclarationFor(selector: string, property: string): string {
+  const value = rules.find((rule) => (
+    rule.selectors.includes(selector) && rule.declarations.has(property)
+  ))?.declarations.get(property);
+
+  expect(value, `${selector} must declare ${property}`).toBeDefined();
+  return value as string;
+}
+
 function declarationForSelectorList(selectors: string[], property: string): string {
   const rule = rules.find((candidate) => (
     candidate.selectors.length === selectors.length
@@ -180,6 +189,48 @@ describe('desktop native layout tokens', () => {
     expect(declarationFor('.netlist-panel', 'width')).toBe('auto');
     expect(declarationFor('.netlist-panel', 'margin')).toBe('0 10px 10px');
     expect(declarationFor('.netlist-panel', 'box-sizing')).toBe('border-box');
+  });
+
+  it('prevents player and DLNA panels from expanding beyond a narrow viewport', () => {
+    expect(declarationFor('.popover', 'grid-template-columns')).toBe('minmax(0, 1fr)');
+    for (const selector of [
+      '.player-view',
+      '.now-playing',
+      '.netlist-panel',
+      '.netlist-tabs',
+      '.netlist-header',
+      '.netlist-title-group',
+      '.netlist-items-container',
+      '.netlist-scroll-area',
+      '.netlist-item',
+      '.netlist-item-text',
+    ]) {
+      expect(declarationFor(selector, 'min-width')).toBe('0');
+      expect(declarationFor(selector, 'max-width')).toBe('100%');
+    }
+  });
+
+  it('keeps the V2 player in explicit, overflow-safe layout regions', () => {
+    expect(firstDeclarationFor('.v2-content .player-view', 'grid-template-areas')).toBe(
+      '"heading heading" "player signal" "player queue" "controls queue"',
+    );
+    expect(firstDeclarationFor('.v2-content .player-view', 'grid-template-columns')).toBe(
+      'minmax(400px, 1.5fr) minmax(280px, .9fr)',
+    );
+    expect(declarationFor('.v2-content .player-view', 'grid-template-areas')).toBe(
+      '"heading" "player" "controls" "signal" "queue"',
+    );
+    expect(declarationFor('.v2-player-controls', 'flex-wrap')).toBe('wrap');
+    expect(declarationFor('.v2-player-controls', 'min-width')).toBe('0');
+    expect(declarationFor('.v2-up-next-row', 'grid-template-columns')).toBe(
+      '42px minmax(0, 1fr)',
+    );
+    expect(firstDeclarationFor('.v2-content .v2-player-page', 'grid-template-areas')).toBe(
+      '"player signal" "player queue" "controls queue"',
+    );
+    expect(declarationFor('.v2-content .v2-player-page', 'grid-template-areas')).toBe(
+      '"player" "controls" "signal" "queue"',
+    );
   });
 
   it('preserves the phrasing wrapper as the flexible DLNA metadata column', () => {

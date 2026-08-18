@@ -14,11 +14,11 @@
       {
         "label": "main",
         "title": "O-Control",
-        "width": 390,
-        "height": 728,
-        "minWidth": 390,
-        "minHeight": 728,
-        "resizable": false,
+        "width": 1180,
+        "height": 760,
+        "minWidth": 920,
+        "minHeight": 640,
+        "resizable": true,
         "fullscreen": false,
         "center": true,
         "visible": true,
@@ -32,6 +32,16 @@
   "bundle": {
     "active": true,
     "targets": ["app", "dmg"],
+    "icon": [
+      "icons/icon.icns",
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png"
+    ],
+    "resources": {
+      "resources/o-control-service-bun": "o-control-service-bun",
+      "resources/o-control-service.cjs": "o-control-service.cjs"
+    },
     "externalBin": ["binaries/o-control-service"]
   }
 }

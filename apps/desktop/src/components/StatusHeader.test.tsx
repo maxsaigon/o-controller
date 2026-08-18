@@ -41,11 +41,10 @@ describe('StatusHeader', () => {
       />,
     );
 
-    expect(screen.getByRole('status', { name: 'Receiver connected' })).toHaveClass('connected');
+    expect(screen.getByRole('status', { name: 'Receiver on' })).toHaveClass('connected');
     expect(screen.queryByText('Connected')).not.toBeInTheDocument();
     expect(screen.queryByText('Network')).not.toBeInTheDocument();
-    const heading = screen.getByRole('heading', { name: 'CR-N775' });
-    expect(heading).toBeInTheDocument();
+    expect(screen.queryByRole('heading')).not.toBeInTheDocument();
   });
 
   it.each([
@@ -64,11 +63,22 @@ describe('StatusHeader', () => {
     expect(status).toHaveClass('offline');
   });
 
-  it('styles the direct heading and connection dots', () => {
+  it('shows a red dot when the connected receiver is in standby', () => {
+    render(
+      <StatusHeader
+        state={receiverState({ power: 'off' })}
+        serviceReachable
+        pendingCommand={null}
+        onPower={vi.fn()}
+      />,
+    );
+
+    const status = screen.getByRole('status', { name: 'Receiver standby' });
+    expect(status).toHaveClass('offline');
+  });
+
+  it('styles the connection dots', () => {
     expect(styleFor('.status-header').getPropertyValue('align-items')).toBe('center');
-    const headingStyle = styleFor('.header-center h1, .status-header > h1');
-    expect(headingStyle.getPropertyValue('font-size')).toBe('17px');
-    expect(headingStyle.getPropertyValue('text-align')).toBe('center');
     expect(styleFor('.status-dot.connected').getPropertyValue('color')).toBe('#27a653');
     expect(styleFor('.status-dot.offline').getPropertyValue('color')).toBe('#d74848');
   });

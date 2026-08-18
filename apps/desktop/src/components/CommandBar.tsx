@@ -1,51 +1,35 @@
-import type { OControlState } from '@o-control/shared';
-import { Home, Library, SlidersHorizontal, Volume2, VolumeX } from 'lucide-react';
+import { Home, Library, PlayCircle, SlidersHorizontal } from 'lucide-react';
 
 type Props = {
-  state: OControlState;
   receiverAvailable: boolean;
-  activePanel: 'input' | 'volume' | 'list' | null;
+  activePanel: 'home' | 'input' | 'list' | null;
   settingsOpen: boolean;
-  onOpenRemote: () => void;
-  onOpenVolume: () => void;
+  onOpenHome: () => void;
+  onOpenPlayer: () => void;
   onOpenSettings: () => void;
   onOpenList: () => void;
 };
 
 export function CommandBar({
-  state,
   receiverAvailable,
   activePanel,
   settingsOpen,
-  onOpenRemote,
-  onOpenVolume,
+  onOpenHome,
+  onOpenPlayer,
   onOpenSettings,
   onOpenList,
 }: Props) {
   return (
     <nav className="command-rail" aria-label="Primary actions">
       <button
-        className={!settingsOpen && activePanel === null ? 'active' : ''}
+        className={!settingsOpen && activePanel === 'home' ? 'active' : ''}
         type="button"
-        aria-label="Remote"
-        aria-pressed={!settingsOpen && activePanel === null}
-        onClick={onOpenRemote}
+        aria-label="Home"
+        aria-pressed={!settingsOpen && activePanel === 'home'}
+        onClick={onOpenHome}
       >
         <Home size={18} />
-        <span>Remote</span>
-      </button>
-
-      <button
-        className={`${activePanel === 'volume' ? 'active' : ''} ${state.muted ? 'muted' : ''}`}
-        type="button"
-        aria-label="Volume"
-        aria-describedby="command-volume-status"
-        aria-pressed={activePanel === 'volume'}
-        disabled={!receiverAvailable}
-        onClick={onOpenVolume}
-      >
-        {state.muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-        <span id="command-volume-status">{state.muted ? 'Muted' : `Vol ${state.volume}`}</span>
+        <span>Home</span>
       </button>
 
       <button
@@ -61,7 +45,18 @@ export function CommandBar({
       </button>
 
       <button
-        className={settingsOpen ? 'active' : ''}
+        className={!settingsOpen && activePanel === null ? 'active' : ''}
+        type="button"
+        aria-label="Player"
+        aria-pressed={!settingsOpen && activePanel === null}
+        onClick={onOpenPlayer}
+      >
+        <PlayCircle size={18} />
+        <span>Player</span>
+      </button>
+
+      <button
+        className={`settings-destination ${settingsOpen ? 'active' : ''}`}
         type="button"
         aria-label="Settings"
         aria-pressed={settingsOpen}

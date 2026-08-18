@@ -370,4 +370,11 @@ export class StateStore {
       this.notify();
     }
   }
+
+  setFileSize(size: number | undefined): void {
+    if (this.state.nowPlaying.fileSize !== size) {
+      this.state.nowPlaying.fileSize = size;
+      this.notify();
+    }
+  }
 }

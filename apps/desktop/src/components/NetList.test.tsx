@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { receiverState } from '../test/fixtures';
 import { NetList } from './NetList';
+import type { LibraryNavigationTarget } from './NetList';
 
 type RawResult = { ok: true } | { ok: false; error: string };
 
@@ -30,6 +31,8 @@ function deferred<T>() {
 function renderNetList(options: {
   serviceUrl?: string;
   state?: ReturnType<typeof receiverState>;
+  navigationTarget?: LibraryNavigationTarget;
+  onNavigationHandled?: () => void;
 } = {}) {
   return render(
     <NetList
@@ -38,6 +41,8 @@ function renderNetList(options: {
       command={command}
       rawCommand={rawCommand}
       serviceUrl={options.serviceUrl ?? 'http://service-a:8787'}
+      navigationTarget={options.navigationTarget}
+      onNavigationHandled={options.onNavigationHandled}
     />,
   );
 }
@@ -92,6 +97,43 @@ describe('NetList', () => {
     expect(alertSpy).not.toHaveBeenCalled();
   });
 
+  it('renders an empty OSD folder as empty after its title has loaded', async () => {
+    localStorage.setItem('netlist_mode', 'osd');
+    renderNetList({
+      state: receiverState({
+        netList: { title: 'Empty folder', cursor: -1, totalItems: 0, items: [] },
+      }),
+    });
+
+    expect(await screen.findByText('This list is empty.')).toBeVisible();
+    expect(screen.queryByText('Loading items...')).not.toBeInTheDocument();
+  });
+
+  it('uses the OSD navigation buttons to move the receiver selection', async () => {
+    localStorage.setItem('netlist_mode', 'osd');
+    renderNetList({
+      state: receiverState({
+        netList: {
+          title: 'Music Server',
+          cursor: 0,
+          totalItems: 2,
+          items: [
+            { index: 0, name: 'Albums', type: 'folder' },
+            { index: 1, name: 'Track.flac', type: 'file' },
+          ],
+        },
+      }),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Move selection down' }));
+
+    await waitFor(() => expect(rawCommand).toHaveBeenCalledWith(
+      '/commands/list/action',
+      { action: 'down' },
+      expect.any(AbortSignal),
+    ));
+  });
+
   it('renders a DLNA playback failure locally and never calls alert', async () => {
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
     fetchMock.mockImplementation(async (input) => {
@@ -118,7 +160,12 @@ describe('NetList', () => {
     });
     renderNetList();
 
+    expect(screen.getByRole('button', { name: 'Folders' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Receiver list' })).toHaveAttribute('aria-pressed', 'false');
+
     fireEvent.click(await screen.findByRole('button', { name: 'Open media server Living Room NAS' }));
+    expect(screen.queryByText('192.0.2.10')).not.toBeInTheDocument();
+    expect(screen.queryByText(/items loaded|servers discovered/i)).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: 'Play Blue in Green' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -126,6 +173,169 @@ describe('NetList', () => {
     );
     expect(alertSpy).not.toHaveBeenCalled();
     expect(command).not.toHaveBeenCalled();
+  });
+
+  it('passes the selected DLNA album artwork URI to the service', async () => {
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/dlna/servers')) {
+        return jsonResponse({
+          servers: [{ id: 'nas', friendlyName: 'Artwork NAS', host: '192.0.2.10' }],
+        });
+      }
+      if (url.endsWith('/dlna/browse')) {
+        return jsonResponse({
+          items: [{
+            id: 'track-1',
+            parentId: '0',
+            title: 'Artwork track',
+            type: 'item',
+            resourceUrl: 'http://nas/track.flac',
+            mimeType: 'audio/flac',
+            albumArtURI: 'http://nas/art.jpg',
+          }],
+        });
+      }
+      if (url.endsWith('/dlna/play')) {
+        const body = JSON.parse(String(init?.body)) as { albumArtURI?: string };
+        expect(body.albumArtURI).toBe('http://nas/art.jpg');
+        return jsonResponse({ success: true });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    renderNetList();
+    fireEvent.click(await screen.findByRole('button', { name: 'Open media server Artwork NAS' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Play Artwork track' }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/dlna/play'))).toBe(true));
+  });
+
+  it('routes Albums to the MusicServer album container and renders album detail tracks', async () => {
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/dlna/servers')) {
+        return jsonResponse({ servers: [{ id: 'nas', friendlyName: 'Catalog NAS', host: '192.0.2.10' }] });
+      }
+      if (url.endsWith('/dlna/browse')) {
+        const body = JSON.parse(String(init?.body)) as { objectId: string };
+        if (body.objectId === '0') return jsonResponse({ items: [{ id: 'albums', parentId: '0', title: '391 albums', type: 'container' }] });
+        if (body.objectId === 'albums') return jsonResponse({ items: [{ id: 'album-1', parentId: 'albums', title: 'Album One', type: 'container', childCount: 2 }] });
+        return jsonResponse({ items: [
+          { id: 'track-1', parentId: 'album-1', title: 'First Track', type: 'item', artist: 'Artist One', album: 'Album One', resourceUrl: 'http://nas/1.flac' },
+          { id: 'track-2', parentId: 'album-1', title: 'Second Track', type: 'item', artist: 'Artist One', album: 'Album One', resourceUrl: 'http://nas/2.flac' },
+        ] });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    renderNetList();
+    fireEvent.click(await screen.findByRole('button', { name: 'Open media server Catalog NAS' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Albums' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Album One 2 items/ }));
+
+    expect(await screen.findByRole('button', { name: 'Play Album' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Play First Track' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Play Second Track' })).toBeVisible();
+  });
+
+  it('opens a Home deep link directly at its album object', async () => {
+    const onNavigationHandled = vi.fn();
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/dlna/servers')) return jsonResponse({ servers: [] });
+      if (url.endsWith('/dlna/browse')) {
+        const body = JSON.parse(String(init?.body)) as { objectId: string };
+        expect(body.objectId).toBe('album-42');
+        return jsonResponse({ items: [
+          { id: 'track-1', parentId: 'album-42', title: 'Deep Track', type: 'item', artist: 'Artist', album: 'Deep Album', resourceUrl: 'http://nas/deep.flac' },
+        ] });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    renderNetList({
+      navigationTarget: {
+        server: { id: 'nas', friendlyName: 'Deep NAS', host: '192.0.2.10' },
+        kind: 'albums',
+        objectId: 'album-42',
+        title: 'Deep Album',
+      },
+      onNavigationHandled,
+    });
+
+    expect(await screen.findByRole('button', { name: 'Play Deep Track' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Deep Album' })).toBeVisible();
+    expect(onNavigationHandled).toHaveBeenCalledOnce();
+  });
+
+  it('preserves the selected folder when Library is reopened', async () => {
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/dlna/servers')) {
+        return jsonResponse({
+          servers: [{ id: 'nas', friendlyName: 'Remembered NAS', host: '192.0.2.10' }],
+        });
+      }
+      if (url.endsWith('/dlna/browse')) {
+        const body = JSON.parse(String(init?.body)) as { objectId: string };
+        return jsonResponse({
+          items: body.objectId === '0'
+            ? [{ id: 'album', parentId: '0', title: 'Remembered Album', type: 'container' }]
+            : [{ id: 'track', parentId: 'album', title: 'Remembered Track', type: 'item', resourceUrl: 'http://nas/track.flac' }],
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    const firstRender = renderNetList();
+    fireEvent.click(await screen.findByRole('button', { name: 'Open media server Remembered NAS' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open folder Remembered Album' }));
+    expect(await screen.findByRole('button', { name: 'Play Remembered Track' })).toBeVisible();
+
+    firstRender.unmount();
+    renderNetList();
+
+    expect(await screen.findByRole('heading', { name: 'Remembered Album' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Play Remembered Track' })).toBeVisible();
+    const browseBodies = fetchMock.mock.calls
+      .filter(([input]) => String(input).endsWith('/dlna/browse'))
+      .map(([, init]) => JSON.parse(String(init?.body)) as { objectId: string });
+    expect(browseBodies.at(-1)?.objectId).toBe('album');
+  });
+
+  it('sends the current folder as a DLNA playlist for automatic next-track playback', async () => {
+    let playBody: { resourceUrl: string; playlist?: Array<{ resourceUrl: string }> } | undefined;
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/dlna/servers')) {
+        return jsonResponse({
+          servers: [{ id: 'nas', friendlyName: 'Playlist NAS', host: '192.0.2.10' }],
+        });
+      }
+      if (url.endsWith('/dlna/browse')) {
+        return jsonResponse({
+          items: [
+            { id: 'track-1', parentId: '0', title: 'Track One', type: 'item', resourceUrl: 'http://nas/one.flac', mimeType: 'audio/flac' },
+            { id: 'track-2', parentId: '0', title: 'Track Two', type: 'item', resourceUrl: 'http://nas/two.flac', mimeType: 'audio/flac' },
+          ],
+        });
+      }
+      if (url.endsWith('/dlna/play')) {
+        playBody = JSON.parse(String(init?.body)) as { resourceUrl: string; playlist?: Array<{ resourceUrl: string }> };
+        return jsonResponse({ success: true });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    renderNetList();
+    fireEvent.click(await screen.findByRole('button', { name: 'Open media server Playlist NAS' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Play Track One' }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/dlna/play'))).toBe(true));
+    expect(playBody?.resourceUrl).toBe('http://nas/one.flac');
+    expect(playBody?.playlist?.map((track) => track.resourceUrl)).toEqual([
+      'http://nas/one.flac',
+      'http://nas/two.flac',
+    ]);
   });
 
   it('clears the retained scan timer and aborts requests when Library unmounts', async () => {
@@ -308,7 +518,7 @@ describe('NetList', () => {
       />,
     );
 
-    expect(await screen.findByRole('heading', { name: 'Media Servers' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Choose a media server' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Open media server Fresh NAS' })).toBeVisible();
     expect(screen.queryByText('Old selection')).not.toBeInTheDocument();
   });

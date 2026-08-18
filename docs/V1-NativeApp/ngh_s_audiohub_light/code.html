@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Nghệ sĩ - AudioHub</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary-fixed-variant": "#793100",
+                        "surface-container-high": "#eae7ea",
+                        "error": "#ba1a1a",
+                        "inverse-on-surface": "#f3f0f2",
+                        "outline": "#717786",
+                        "on-primary-fixed": "#001b3e",
+                        "secondary-fixed": "#dbe4ed",
+                        "surface-container-lowest": "#ffffff",
+                        "on-tertiary": "#ffffff",
+                        "primary-fixed": "#d6e3ff",
+                        "surface-variant": "#e4e2e4",
+                        "secondary-container": "#d8e1ea",
+                        "primary-container": "#0073e0",
+                        "secondary": "#575f67",
+                        "outline-variant": "#c0c6d6",
+                        "primary-fixed-dim": "#aac7ff",
+                        "on-primary": "#ffffff",
+                        "on-background": "#1b1b1d",
+                        "surface-dim": "#dcd9dc",
+                        "surface-container-highest": "#e4e2e4",
+                        "on-surface-variant": "#414754",
+                        "on-secondary-container": "#5b646b",
+                        "surface-container-low": "#f6f3f5",
+                        "tertiary-fixed-dim": "#ffb691",
+                        "tertiary": "#9a4100",
+                        "background": "#fcf8fb",
+                        "surface-tint": "#005db8",
+                        "surface-container": "#f0edef",
+                        "on-secondary": "#ffffff",
+                        "on-primary-container": "#fefcff",
+                        "on-tertiary-container": "#fffbff",
+                        "primary": "#005ab3",
+                        "surface-bright": "#fcf8fb",
+                        "on-secondary-fixed-variant": "#3f484f",
+                        "on-surface": "#1b1b1d",
+                        "inverse-surface": "#303032",
+                        "secondary-fixed-dim": "#bfc8d0",
+                        "on-error": "#ffffff",
+                        "surface": "#fcf8fb",
+                        "on-primary-fixed-variant": "#00468d",
+                        "error-container": "#ffdad6",
+                        "tertiary-fixed": "#ffdbcb",
+                        "on-error-container": "#93000a",
+                        "tertiary-container": "#c25300",
+                        "on-tertiary-fixed": "#341100",
+                        "on-secondary-fixed": "#141d23",
+                        "inverse-primary": "#aac7ff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "margin-desktop": "40px",
+                        "container-max": "1440px",
+                        "gutter": "24px",
+                        "unit": "8px",
+                        "margin-mobile": "16px"
+                    },
+                    "fontFamily": {
+                        "headline-lg-mobile": ["Manrope"],
+                        "headline-md": ["Manrope"],
+                        "label-md": ["Manrope"],
+                        "display-lg": ["Manrope"],
+                        "body-lg": ["Manrope"],
+                        "label-sm": ["Manrope"],
+                        "headline-lg": ["Manrope"],
+                        "body-md": ["Manrope"]
+                    },
+                    "fontSize": {
+                        "headline-lg-mobile": ["28px", { "lineHeight": "1.3", "fontWeight": "700" }],
+                        "headline-md": ["24px", { "lineHeight": "1.4", "fontWeight": "600" }],
+                        "label-md": ["14px", { "lineHeight": "1.2", "letterSpacing": "0.01em", "fontWeight": "600" }],
+                        "display-lg": ["48px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "800" }],
+                        "body-lg": ["18px", { "lineHeight": "1.6", "fontWeight": "400" }],
+                        "label-sm": ["12px", { "lineHeight": "1.2", "fontWeight": "500" }],
+                        "headline-lg": ["32px", { "lineHeight": "1.3", "letterSpacing": "-0.01em", "fontWeight": "700" }],
+                        "body-md": ["16px", { "lineHeight": "1.6", "fontWeight": "400" }]
+                    }
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-background text-on-background min-h-screen antialiased flex flex-col md:flex-row relative">
+<!-- SideNavBar (Desktop) -->
+<nav class="hidden md:flex flex-col h-screen w-64 fixed left-0 top-0 bg-surface/80 backdrop-blur-xl border-r border-surface-container-low shadow-sm py-margin-desktop z-40">
+<div class="px-gutter mb-8">
+<h1 class="font-headline-md text-headline-md font-bold text-primary">Music Studio</h1>
+<p class="font-label-sm text-label-sm text-on-surface-variant mt-1">Premium Pro</p>
+</div>
+<ul class="flex flex-col flex-grow gap-2 px-4">
+<li>
+<a class="flex items-center gap-4 px-4 py-3 rounded-lg font-body-md text-body-md text-secondary hover:bg-surface-container-low transition-colors active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="library_music">library_music</span>
+                    Library
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-4 px-4 py-3 rounded-lg font-body-md text-body-md text-secondary hover:bg-surface-container-low transition-colors active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="explore">explore</span>
+                    Discovery
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-4 px-4 py-3 rounded-lg font-body-md text-body-md text-primary font-bold border-l-4 border-primary bg-primary/5 active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="person" style="font-variation-settings: 'FILL' 1;">person</span>
+                    Artists
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-4 px-4 py-3 rounded-lg font-body-md text-body-md text-secondary hover:bg-surface-container-low transition-colors active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="album">album</span>
+                    Albums
+                </a>
+</li>
+</ul>
+<div class="mt-auto px-4 flex flex-col gap-2 border-t border-surface-container-low pt-4">
+<a class="flex items-center gap-4 px-4 py-3 rounded-lg font-body-md text-body-md text-secondary hover:bg-surface-container-low transition-colors active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+                    Settings
+                </a>
+<a class="flex items-center gap-4 px-4 py-3 rounded-lg font-body-md text-body-md text-secondary hover:bg-surface-container-low transition-colors active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="help_outline">help_outline</span>
+                    Support
+                </a>
+</div>
+</nav>
+<!-- TopAppBar (Desktop) -->
+<header class="hidden md:flex items-center justify-between px-gutter w-[calc(100%-16rem)] h-16 fixed top-0 right-0 bg-surface/60 backdrop-blur-md z-30 transition-all duration-300">
+<div class="flex-1 flex items-center gap-4">
+<div class="relative w-64">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
+<input class="w-full pl-10 pr-4 py-2 rounded-full border border-outline-variant bg-surface-container-lowest focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-body-md text-body-md" placeholder="Search artists, tracks..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 text-primary hover:bg-surface-container-high/50 rounded-full transition-colors">
+<span class="material-symbols-outlined" data-icon="cast">cast</span>
+</button>
+<button class="p-2 text-primary hover:bg-surface-container-high/50 rounded-full transition-colors relative">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+<span class="absolute top-1 right-1 w-2 h-2 bg-error rounded-full"></span>
+</button>
+<img alt="User Profile Avatar" class="w-8 h-8 rounded-full object-cover border border-outline-variant" data-alt="A small circular profile picture of a young woman with a warm smile, set against a clean, brightly lit modern studio background. The style is premium, light-mode friendly, and highly professional." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA8-jBnt5fFgMPIEpVd-QDtsManHHdIbfGNToauQnB1qToCs94UcRLjHZhvQns0rkBCb6aKg8CJ_OYBuGsUt8m6TTVfdXEhpPR_SliEDtFORWywjSxydEFgMYfqh7V8zQip2bO0LZE-52RZ0VagfJwD0YzzLP2YmnNAxsdpSyxNNoABiE0jvWiDptnvc7GT39ZeSfjCQVBkmDEdoEItjPcNHDIxnrN-WuznhgHdMwrmr35ilBhXGmekdg"/>
+</div>
+</header>
+<!-- Main Content Area -->
+<main class="flex-1 md:ml-64 pb-24 md:pb-0 pt-0 md:pt-16 min-h-screen flex flex-col relative z-10 w-full md:w-[calc(100%-16rem)]">
+<!-- Artist Header (Hero Section) -->
+<section class="relative w-full h-[50vh] min-h-[400px] flex items-end">
+<!-- Studio Background Image -->
+<div class="absolute inset-0 z-0">
+<img alt="Artist Studio Background" class="w-full h-full object-cover" data-alt="A sweeping, cinematic high-resolution photograph of an acoustic music studio control room. The scene features a massive analog mixing console in the foreground, with warm sunlight streaming through acoustic treated windows. The color palette is composed of crisp whites, soft greys, and warm wood tones, creating a highly professional, premium, and bright light-mode aesthetic. The mood is creative and focused." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCIVVlcJsWDy0vxluTMoFLbUZclA57PKOnrqYlAKXnL7PDyktMCtLu4777pQZ6HvhVGyb30HVOhiMcNw2diBqImJiCehYOYnW57gzpdeH6IROkqghMHNramEIvarQEGDJE22sKeG1zzwu0BMkPz4vgG4EAVP_uZgcyBKrVgMEbJ6rbXRA_rTVEqs3BTA6faDOR0Qi7J03eA5yLXlzbWcQEqm3Zggyq1iT3Ww_DlYnzL9S1Pu4bjdfVtGQ"/>
+<!-- Gradient Overlay for text legibility -->
+<div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent"></div>
+</div>
+<!-- Artist Info Container -->
+<div class="relative z-10 w-full max-w-[container-max] mx-auto px-margin-mobile md:px-margin-desktop pb-8 flex flex-col md:flex-row items-end gap-6">
+<!-- Profile Picture -->
+<div class="flex-shrink-0 relative group">
+<img alt="Artist Portrait" class="w-40 h-40 md:w-56 md:h-56 rounded-full object-cover border-4 border-surface shadow-lg group-hover:shadow-xl transition-shadow duration-300" data-alt="A highly detailed, professional headshot portrait of an indie-pop musician. They are looking directly at the camera with a confident, artistic expression. The lighting is soft and studio-quality, emphasizing clarity and depth. The background is a clean, neutral off-white to maintain a premium light-mode aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCakX1XEOnDR9GUPmvn3WXWg6NZAC7oCvBRVpT6GfxP_j5Fr4I8V_KAJmYGMJ4iEDrtQ9vY2B0G5ypFcbkJPP6ZFDuO_iyEPtCnO76TfcwAJjn53LIZYdrj4iUOO2WKjoXkocx0DxGw5R1CUGI3F5bri_B-AJ8bzqxtkWy4hoTtIEkVjpiQFlj-xysEebcEGcbtVuGAVRKJ5yUHgK7HkMynuWwMJQSD7isg7CpX19kBC7OrYYUDUyP5UQ"/>
+<!-- Play Overlay (Hover) -->
+<div class="absolute inset-0 flex items-center justify-center bg-black/20 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+<span class="material-symbols-outlined text-white text-6xl drop-shadow-md" style="font-variation-settings: 'FILL' 1;">play_circle</span>
+</div>
+</div>
+<!-- Text Content -->
+<div class="flex-1 flex flex-col gap-2 text-center md:text-left">
+<div class="flex items-center justify-center md:justify-start gap-2">
+<span class="material-symbols-outlined text-primary text-xl" style="font-variation-settings: 'FILL' 1;">verified</span>
+<span class="font-label-md text-label-md text-primary tracking-widest uppercase">Verified Artist</span>
+</div>
+<h1 class="font-display-lg text-display-lg font-extrabold text-on-surface">Elena Rostova</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-2xl leading-relaxed mt-2 hidden md:block">
+                        Blending acoustic warmth with electronic precision, Elena crafts soundscapes that resonate with melancholic beauty and rhythmic drive. Over 15 million monthly listeners.
+                    </p>
+<!-- Action Buttons -->
+<div class="flex items-center justify-center md:justify-start gap-4 mt-4">
+<button class="bg-primary text-on-primary font-label-md text-label-md px-8 py-3 rounded-full hover:bg-primary/90 transition-colors shadow-md flex items-center gap-2">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+                            Play
+                        </button>
+<button class="bg-transparent text-on-surface border border-outline-variant font-label-md text-label-md px-6 py-3 rounded-full hover:bg-surface-container-low hover:border-outline transition-all flex items-center gap-2">
+                             Follow
+                        </button>
+<button class="p-3 text-secondary hover:bg-surface-container-low rounded-full transition-colors border border-transparent hover:border-outline-variant">
+<span class="material-symbols-outlined">more_horiz</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar (Mobile) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full h-20 bg-surface/90 backdrop-blur-2xl border-t border-surface-container-low flex items-center justify-around px-margin-mobile z-50 shadow-[0_-8px_30px_rgba(0,0,0,0.04)]">
+<a class="flex flex-col items-center gap-1 text-secondary active:scale-90 transition-transform" href="#">
+<span class="material-symbols-outlined" data-icon="library_music">library_music</span>
+<span class="font-label-sm text-[10px]">Library</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-primary font-bold active:scale-90 transition-transform" href="#">
+<span class="material-symbols-outlined" data-icon="person" style="font-variation-settings: 'FILL' 1;">person</span>
+<span class="font-label-sm text-[10px]">Artists</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-secondary active:scale-90 transition-transform" href="#">
+<span class="material-symbols-outlined" data-icon="album">album</span>
+<span class="font-label-sm text-[10px]">Albums</span>
+</a>
+</nav>
+</body></html>

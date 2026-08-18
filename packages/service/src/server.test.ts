@@ -28,11 +28,31 @@ after(async () => {
 });
 
 describe('DLNA response contracts', () => {
+  it('exposes the SSDP scan route used by the desktop client', async () => {
+    const res = await app.inject({ method: 'POST', url: '/dlna/scan' });
+
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(JSON.parse(res.payload), {
+      success: true,
+      message: 'SSDP scan triggered',
+    });
+  });
+
   it('returns an explicit success boolean for missing servers', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/dlna/browse',
       payload: { serverId: 'missing', objectId: '0' },
+    });
+
+    assert.equal(res.statusCode, 404);
+    assert.equal(JSON.parse(res.payload).success, false);
+  });
+
+  it('returns an explicit success boolean for missing music catalog servers', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/music/catalog?serverId=missing&objectId=0',
     });
 
     assert.equal(res.statusCode, 404);
@@ -50,6 +70,19 @@ describe('GET /health', () => {
     assert.equal(body.status, 'ok');
     assert.equal(body.mockMode, true);
     assert.equal(typeof body.uptime, 'number');
+  });
+});
+
+describe('GET /dlna/artwork-cache/stats', () => {
+  it('reports bounded artwork cache diagnostics', async () => {
+    const res = await app.inject({ method: 'GET', url: '/dlna/artwork-cache/stats' });
+    assert.equal(res.statusCode, 200);
+    const body = JSON.parse(res.payload);
+    assert.equal(typeof body.entries, 'number');
+    assert.equal(typeof body.bytes, 'number');
+    assert.equal(typeof body.hits, 'number');
+    assert.equal(typeof body.misses, 'number');
+    assert.equal(typeof body.pending, 'number');
   });
 });
 
@@ -343,11 +376,29 @@ describe('GET /cover-art', () => {
     assert.equal(res.statusCode, 404);
   });
 
-  it('should redirect to http URL if coverArtUrl is a web URL', async () => {
-    store.setCoverArt('https://example.com/album.jpg');
+  it('should not serve an empty cached image as artwork', async () => {
+    const { setCachedCoverArt } = await import('./server.js');
+    setCachedCoverArt(Buffer.alloc(0));
     const res = await app.inject({ method: 'GET', url: '/cover-art' });
-    assert.equal(res.statusCode, 302);
-    assert.equal(res.headers.location, 'https://example.com/album.jpg');
+    assert.equal(res.statusCode, 404);
+  });
+
+  it('proxies remote cover artwork so the desktop CSP can display it', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]), {
+      status: 200,
+      headers: { 'content-type': 'image/jpeg' },
+    });
+    store.setCoverArt('https://example.com/album.jpg');
+    try {
+      const res = await app.inject({ method: 'GET', url: '/cover-art' });
+      assert.equal(res.statusCode, 200);
+      assert.equal(res.headers['content-type'], 'image/jpeg');
+      assert.equal(res.headers['cache-control'], 'private, max-age=21600');
+      assert.deepEqual(res.rawPayload, Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it('should return decoded binary buffer if coverArtUrl is base64 data URI', async () => {
@@ -359,6 +410,92 @@ describe('GET /cover-art', () => {
     assert.equal(res.headers['content-type'], 'image/png');
     const expectedBuffer = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
     assert.deepEqual(res.rawPayload, expectedBuffer);
+  });
+});
+
+describe('POST /dlna/play artwork metadata', () => {
+  beforeEach(() => {
+    store.resetNowPlaying();
+  });
+
+  it('retains the DLNA album art URI for the now-playing artwork proxy', async () => {
+    const albumArtURI = 'http://192.168.1.174:9790/minimserver/art.jpg';
+    const res = await app.inject({
+      method: 'POST',
+      url: '/dlna/play',
+      payload: {
+        resourceUrl: 'http://192.168.1.174:9790/minimserver/track.flac',
+        title: 'Long title',
+        artist: 'Artist',
+        mimeType: 'audio/flac',
+        albumArtURI,
+      },
+    });
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(store.getState().nowPlaying.coverArtUrl, albumArtURI);
+  });
+
+  it('publishes queued track metadata immediately after playback is accepted', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/dlna/play',
+      payload: {
+        resourceUrl: 'http://nas/track.flac',
+        title: 'Immediate Title',
+        artist: 'Immediate Artist',
+        album: 'Immediate Album',
+        size: 52428800,
+      },
+    });
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(store.getState().nowPlaying.title, 'Immediate Title');
+    assert.equal(store.getState().nowPlaying.artist, 'Immediate Artist');
+    assert.equal(store.getState().nowPlaying.album, 'Immediate Album');
+    assert.equal(store.getState().nowPlaying.fileSize, 52428800);
+    assert.equal(store.getState().playback, 'playing');
+  });
+
+  it('exposes the remaining DLNA playlist through state for Up Next', async () => {
+    const playlist = [
+      { resourceUrl: 'http://nas/one.flac', title: 'One', artist: 'Artist' },
+      { resourceUrl: 'http://nas/two.flac', title: 'Two', artist: 'Artist' },
+    ];
+    const play = await app.inject({ method: 'POST', url: '/dlna/play', payload: {
+      ...playlist[0],
+      playlist,
+    } });
+    assert.equal(play.statusCode, 200);
+
+    const stateResponse = await app.inject({ method: 'GET', url: '/state' });
+    const state = JSON.parse(stateResponse.payload);
+    assert.equal(state.queue.currentIndex, 0);
+    assert.deepEqual(state.queue.items.map((track: { title: string }) => track.title), ['One', 'Two']);
+
+    const clear = await app.inject({ method: 'POST', url: '/dlna/queue/clear' });
+    assert.equal(clear.statusCode, 200);
+    const clearedState = JSON.parse((await app.inject({ method: 'GET', url: '/state' })).payload);
+    assert.deepEqual(clearedState.queue.items.map((track: { title: string }) => track.title), ['One']);
+  });
+});
+
+describe('AVTransport transition handling', () => {
+  it('recognizes Onkyo transition-not-available faults as transient', async () => {
+    const { isRetryableAVTransportFailure, isTransitionNotAvailableFault } = await import('./server.js');
+    const fault = '<UPnPError><errorCode>701</errorCode><errorDescription>Transition not available</errorDescription></UPnPError>';
+
+    assert.equal(isTransitionNotAvailableFault(fault), true);
+    assert.equal(isTransitionNotAvailableFault('<errorCode>501</errorCode>'), false);
+    assert.equal(isRetryableAVTransportFailure(500, '<errorCode>501</errorCode>'), true);
+    assert.equal(isRetryableAVTransportFailure(400, '<errorCode>714</errorCode>'), false);
+  });
+
+  it('classifies receiver boot 5xx responses as retryable', async () => {
+    const { isRetryableAVTransportFailure } = await import('./server.js');
+
+    assert.equal(isRetryableAVTransportFailure(503, 'Service unavailable while starting'), true);
+    assert.equal(isRetryableAVTransportFailure(400, 'Malformed media URL'), false);
   });
 });
 
@@ -468,6 +605,25 @@ describe('POST /dlna/play schema', () => {
     assert.equal(res.statusCode, 200);
     const body = JSON.parse(res.payload);
     assert.equal(body.success, true);
+  });
+
+  it('accepts a large folder playlist payload for long DLNA folders', async () => {
+    const playlist = Array.from({ length: 3000 }, (_, index) => ({
+      resourceUrl: `http://192.168.1.100/track-${index}-${'x'.repeat(360)}.flac`,
+      title: `Track ${index}`,
+      artist: 'Artist',
+      mimeType: 'audio/flac',
+    }));
+    const res = await app.inject({
+      method: 'POST',
+      url: '/dlna/play',
+      payload: {
+        resourceUrl: playlist[0].resourceUrl,
+        title: playlist[0].title,
+        playlist,
+      },
+    });
+    assert.equal(res.statusCode, 200, res.payload);
   });
 });
 

@@ -15,6 +15,8 @@ export interface ReceiverDevice {
 
 export interface ServiceConfig {
   serviceMode: 'local' | 'external';
+  deviceName?: string;
+  digitalToAnalog?: string;
   activeDeviceId?: string;
   devices?: ReceiverDevice[];
   localConfig?: {
@@ -41,7 +43,11 @@ export interface ServiceStatus {
 
 export function useServiceManager() {
   const [status, setStatus] = useState<ServiceStatus | null>(null);
-  const [config, setConfig] = useState<ServiceConfig>({ serviceMode: 'local' });
+  const [config, setConfig] = useState<ServiceConfig>(() => ({
+    serviceMode: 'local',
+    deviceName: window.localStorage.getItem('o-control.deviceName') || undefined,
+    digitalToAnalog: window.localStorage.getItem('o-control.digitalToAnalog') || undefined,
+  }));
   const [isTauri, setIsTauri] = useState(false);
 
   useEffect(() => {
@@ -58,6 +64,8 @@ export function useServiceManager() {
 
     let intervalId: ReturnType<typeof setInterval>;
 
+    let testedActiveDevice = false;
+
     async function checkStatus() {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
@@ -66,6 +74,11 @@ export function useServiceManager() {
         
         const currentConfig = await invoke<ServiceConfig>('get_service_config');
         setConfig(currentConfig);
+        if (!testedActiveDevice && currentConfig.activeDeviceId) {
+          testedActiveDevice = true;
+          await invoke('test_active_receiver_connection');
+          setConfig(await invoke<ServiceConfig>('get_service_config'));
+        }
       } catch (err) {
         console.error('Failed to get service status or config:', err);
       }
@@ -92,6 +105,17 @@ export function useServiceManager() {
       }
     } else {
       // Browser fallback
+      if (newConfig.deviceName) {
+        window.localStorage.setItem('o-control.deviceName', newConfig.deviceName);
+      } else {
+        window.localStorage.removeItem('o-control.deviceName');
+      }
+      if (newConfig.digitalToAnalog) {
+        window.localStorage.setItem('o-control.digitalToAnalog', newConfig.digitalToAnalog);
+      } else {
+        window.localStorage.removeItem('o-control.digitalToAnalog');
+      }
+      setConfig(newConfig);
       if (newConfig.serviceMode === 'external' && newConfig.externalUrl) {
         window.localStorage.setItem('o-control.serviceUrl', newConfig.externalUrl);
         setStatus({ mode: 'external', url: newConfig.externalUrl, healthy: false, error: null });

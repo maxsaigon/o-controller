@@ -51,6 +51,7 @@ pub fn run() {
             service_manager::update_service_config,
             service_manager::discover_onkyo_devices,
             service_manager::test_receiver_connection
+            ,service_manager::test_active_receiver_connection
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]

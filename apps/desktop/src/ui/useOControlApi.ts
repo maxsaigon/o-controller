@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_STATE } from '@o-control/shared';
-import type { OControlEvent, OControlState, PresetDefinition } from '@o-control/shared';
+import type { OControlEvent, OControlState, PlaybackQueueState, PresetDefinition } from '@o-control/shared';
 
 const EMPTY_STATE: OControlState = DEFAULT_STATE;
+const POWER_STATUS_POLL_INTERVAL_MS = 5000;
 
 type ErrorState = {
   message: string;
@@ -20,6 +21,7 @@ export type RawCommandResult =
 
 function commandDomain(path: string) {
   if (path.startsWith('/presets/')) return 'preset';
+  if (path.startsWith('/dlna/queue/')) return 'queue';
   const domain = path.match(/^\/commands\/([^/]+)/)?.[1] ?? path;
   return domain === 'mute' ? 'volume' : domain;
 }
@@ -49,6 +51,7 @@ async function readJson<T>(url: string, init?: RequestInit): Promise<T> {
 export function useOControlApi(serviceUrl: string) {
   const [state, setState] = useState<OControlState>(EMPTY_STATE);
   const [presets, setPresets] = useState<PresetDefinition[]>([]);
+  const [queue, setQueue] = useState<PlaybackQueueState>({ currentIndex: -1, items: [] });
   const [serviceReachable, setServiceReachable] = useState(false);
   const [pendingCommands, setPendingCommands] = useState<ReadonlyMap<string, string>>(
     () => new Map(),
@@ -94,13 +97,41 @@ export function useOControlApi(serviceUrl: string) {
 
       try {
         const [nextState, nextPresets] = await Promise.all([
-          readJson<OControlState>(`${endpoint}/state`),
+          readJson<OControlState & { queue?: PlaybackQueueState }>(`${endpoint}/state`),
           readJson<PresetDefinition[]>(`${endpoint}/presets`).catch(() => []),
         ]);
         if (!isCurrent()) return false;
         if (stateRefreshGeneration.current !== refreshGeneration) return true;
         setState(nextState);
+        setQueue(nextState.queue ?? { currentIndex: -1, items: [] });
         setPresets(nextPresets);
+        setServiceReachable(true);
+        setServiceError(null);
+        return true;
+      } catch (err) {
+        if (!requestIsCurrent()) return false;
+        setServiceReachable(false);
+        setServiceErrorMessage(err instanceof Error ? err.message : 'Service unavailable');
+        return false;
+      }
+    },
+    [setServiceErrorMessage],
+  );
+
+  const refreshPowerState = useCallback(
+    async (endpoint: string, isCurrent: () => boolean) => {
+      const refreshGeneration = stateRefreshGeneration.current + 1;
+      stateRefreshGeneration.current = refreshGeneration;
+      const requestIsCurrent = () => (
+        isCurrent() && stateRefreshGeneration.current === refreshGeneration
+      );
+
+      try {
+        const nextState = await readJson<OControlState & { queue?: PlaybackQueueState }>(`${endpoint}/state`);
+        if (!isCurrent()) return false;
+        if (stateRefreshGeneration.current !== refreshGeneration) return true;
+        setState(nextState);
+        setQueue(nextState.queue ?? { currentIndex: -1, items: [] });
         setServiceReachable(true);
         setServiceError(null);
         return true;
@@ -140,6 +171,7 @@ export function useOControlApi(serviceUrl: string) {
     activeServiceUrl.current = serviceUrl;
     setState(EMPTY_STATE);
     setPresets([]);
+    setQueue({ currentIndex: -1, items: [] });
     setServiceReachable(false);
     setServiceError(null);
     setCommandErrors(new Map());
@@ -165,6 +197,19 @@ export function useOControlApi(serviceUrl: string) {
       }
     };
   }, [clearDelayedRefresh, refreshState, serviceUrl]);
+
+  useEffect(() => {
+    const lifecycle = lifecycleGeneration.current;
+    const timer = window.setInterval(() => {
+      void refreshPowerState(serviceUrl, () => (
+        mounted.current
+        && lifecycleGeneration.current === lifecycle
+        && activeServiceUrl.current === serviceUrl
+      ));
+    }, POWER_STATUS_POLL_INTERVAL_MS);
+
+    return () => window.clearInterval(timer);
+  }, [refreshPowerState, serviceUrl]);
 
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -375,6 +420,7 @@ export function useOControlApi(serviceUrl: string) {
 
   return {
     state,
+    queue,
     presets,
     serviceReachable,
     pendingCommand,

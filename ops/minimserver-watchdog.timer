@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodically check MinimServer network discovery
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=2min
+AccuracySec=15s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

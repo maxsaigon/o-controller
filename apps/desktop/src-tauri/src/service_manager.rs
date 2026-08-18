@@ -1,7 +1,8 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_shell::{ShellExt, process::CommandChild};
 use tauri_plugin_store::StoreExt;
 use std::time::Duration;
@@ -39,6 +40,8 @@ pub struct ReceiverDevice {
 pub struct ServiceConfig {
     #[serde(rename = "serviceMode")]
     pub service_mode: String, // "local" or "external"
+    #[serde(rename = "digitalToAnalog")]
+    pub digital_to_analog: Option<String>,
     #[serde(rename = "activeDeviceId")]
     pub active_device_id: Option<String>,
     pub devices: Option<Vec<ReceiverDevice>>,
@@ -101,6 +104,8 @@ pub fn get_config(app: &AppHandle) -> ServiceConfig {
     let external_url = store.get("externalUrl")
         .and_then(|v| v.as_str().map(|s| s.to_string()))
         .unwrap_or_else(|| "http://127.0.0.1:8787".to_string());
+    let digital_to_analog = store.get("digitalToAnalog")
+        .and_then(|v| v.as_str().map(|s| s.to_string()));
 
     let mut devices: Option<Vec<ReceiverDevice>> = store.get("devices")
         .and_then(|v| serde_json::from_value(v).ok());
@@ -137,6 +142,7 @@ pub fn get_config(app: &AppHandle) -> ServiceConfig {
 
     ServiceConfig {
         service_mode: mode,
+        digital_to_analog,
         active_device_id,
         devices,
         local_config,
@@ -197,10 +203,20 @@ pub async fn get_service_status(
     let url = format!("http://127.0.0.1:{}", port);
     let healthy = check_health(&url).await.unwrap_or(false);
     
-    let is_running = state.child.lock().unwrap().is_some();
+    let mut is_running = state.child.lock().unwrap().is_some();
+    let mut restart_error = None;
+    if !healthy && !is_running {
+        if let Err(error) = start_local_service(app.clone(), state.inner()).await {
+            restart_error = Some(error);
+        } else {
+            is_running = state.child.lock().unwrap().is_some();
+        }
+    }
 
     let error = if healthy {
         None
+    } else if let Some(error) = restart_error {
+        Some(format!("Service restart failed: {}", error))
     } else if is_running {
         Some("Service is starting...".to_string())
     } else {
@@ -224,6 +240,10 @@ pub async fn update_service_config(
     let store = app.store("settings.json").map_err(|e| e.to_string())?;
     
     store.set("serviceMode", serde_json::json!(config.service_mode));
+    match &config.digital_to_analog {
+        Some(name) if !name.trim().is_empty() => store.set("digitalToAnalog", serde_json::json!(name.trim())),
+        _ => { let _ = store.delete("digitalToAnalog"); },
+    }
     if let Some(local) = &config.local_config {
         store.set("localConfig", serde_json::to_value(local).map_err(|e| e.to_string())?);
     }
@@ -254,6 +274,59 @@ pub fn stop_local_service(state: &ServiceManagerState) {
     if let Some(child) = child_guard.take() {
         let _ = child.kill();
     }
+}
+
+fn refresh_cached_file(source: &Path, destination: &Path) -> Result<(), String> {
+    let temporary = destination.with_extension(format!("tmp-{}", std::process::id()));
+
+    let copy_result = (|| -> std::io::Result<()> {
+        std::fs::copy(source, &temporary)?;
+        std::fs::rename(&temporary, destination)?;
+        Ok(())
+    })();
+
+    if copy_result.is_ok() || destination.is_file() {
+        let _ = std::fs::remove_file(temporary);
+        return Ok(());
+    }
+
+    let _ = std::fs::remove_file(temporary);
+    Err(format!(
+        "Failed to stage {}: {}",
+        source.display(),
+        copy_result.unwrap_err()
+    ))
+}
+
+fn find_resource(resource_dir: &Path, name: &str) -> PathBuf {
+    let direct = resource_dir.join(name);
+    if direct.is_file() {
+        direct
+    } else {
+        resource_dir.join("resources").join(name)
+    }
+}
+
+fn stage_sidecar_runtime(app: &AppHandle) -> Result<(PathBuf, PathBuf), String> {
+    let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| e.to_string())?
+        .join("sidecar");
+    std::fs::create_dir_all(&cache_dir).map_err(|e| e.to_string())?;
+
+    let runtime_name = "o-control-service-bun";
+    let bundle_name = "o-control-service.cjs";
+    let runtime_source = find_resource(&resource_dir, runtime_name);
+    let bundle_source = find_resource(&resource_dir, bundle_name);
+    let cached_runtime = cache_dir.join(runtime_name);
+    let cached_bundle = cache_dir.join(bundle_name);
+
+    refresh_cached_file(&runtime_source, &cached_runtime)?;
+    refresh_cached_file(&bundle_source, &cached_bundle)?;
+
+    Ok((cached_runtime, cached_bundle))
 }
 
 pub async fn start_local_service(
@@ -341,16 +414,19 @@ pub async fn start_local_service(
     }
 
     println!("Spawning local service sidecar...");
-    
-    let sidecar_command = app.shell().sidecar("o-control-service")
-        .map_err(|e| e.to_string())?
-        .envs(envs);
+
+    // Keep executable pages on the system disk. Running Bun directly from an
+    // external app bundle can SIGBUS when macOS unmounts that volume in sleep.
+    let (runtime, bundle) = stage_sidecar_runtime(&app)?;
+    let sidecar_command = app.shell().command(runtime).arg(bundle).envs(envs);
 
     let (mut rx, child) = sidecar_command.spawn().map_err(|e| e.to_string())?;
-    
+    let child_pid = child.pid();
     *state.child.lock().unwrap() = Some(child);
 
-    // Spawn a task to drain the logs
+    // Drain logs and recover if the sidecar exits unexpectedly. Intentional
+    // stops remove the child from state before killing it, so they do not restart.
+    let monitor_app = app.clone();
     tauri::async_runtime::spawn(async move {
         while let Some(event) = rx.recv().await {
             match event {
@@ -364,12 +440,66 @@ pub async fn start_local_service(
                         eprintln!("[sidecar] {}", text.trim());
                     }
                 }
+                tauri_plugin_shell::process::CommandEvent::Terminated(payload) => {
+                    let state = monitor_app.state::<ServiceManagerState>();
+                    let was_current_child = {
+                        let mut child = state.child.lock().unwrap();
+                        if child.as_ref().map(CommandChild::pid) == Some(child_pid) {
+                            child.take();
+                            true
+                        } else {
+                            false
+                        }
+                    };
+
+                    if was_current_child {
+                        eprintln!(
+                            "[sidecar] terminated unexpectedly (code={:?}, signal={:?}); queued for restart",
+                            payload.code, payload.signal
+                        );
+                    }
+                    break;
+                }
                 _ => {}
             }
         }
     });
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::refresh_cached_file;
+
+    #[test]
+    fn cached_sidecar_survives_an_unavailable_source_volume() {
+        let test_dir = std::env::temp_dir().join(format!(
+            "o-control-sidecar-cache-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&test_dir).unwrap();
+        let source = test_dir.join("external-runtime");
+        let cached = test_dir.join("cached-runtime");
+        std::fs::write(&source, b"runtime-v1").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+
+        refresh_cached_file(&source, &cached).unwrap();
+        std::fs::remove_file(&source).unwrap();
+        refresh_cached_file(&source, &cached).unwrap();
+
+        assert_eq!(std::fs::read(&cached).unwrap(), b"runtime-v1");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_ne!(std::fs::metadata(&cached).unwrap().permissions().mode() & 0o111, 0);
+        }
+        std::fs::remove_dir_all(test_dir).unwrap();
+    }
 }
 
 #[tauri::command]
@@ -510,4 +640,24 @@ pub async fn test_receiver_connection(host: String, port: u16) -> Result<TestCon
             })
         }
     }
+}
+
+#[tauri::command]
+pub async fn test_active_receiver_connection(app: AppHandle) -> Result<TestConnectionResult, String> {
+    let config = get_config(&app);
+    let active_id = config.active_device_id.ok_or_else(|| "No active receiver configured".to_string())?;
+    let mut devices = config.devices.ok_or_else(|| "No receivers configured".to_string())?;
+    let device = devices.iter().find(|device| device.id == active_id)
+        .cloned()
+        .ok_or_else(|| "Active receiver not found".to_string())?;
+    let result = test_receiver_connection(device.host, device.port).await?;
+
+    if let Some(active) = devices.iter_mut().find(|candidate| candidate.id == active_id) {
+        active.last_test_status = Some(if result.ok { "online" } else { "offline" }.to_string());
+        active.last_test_at = Some(chrono::Utc::now().to_rfc3339());
+    }
+    let store = app.store("settings.json").map_err(|error| error.to_string())?;
+    store.set("devices", serde_json::to_value(devices).map_err(|error| error.to_string())?);
+    store.save().map_err(|error| error.to_string())?;
+    Ok(result)
 }

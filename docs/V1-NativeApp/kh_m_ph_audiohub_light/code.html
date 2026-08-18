@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+
+<html lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Khám phá - AudioHub</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary-fixed-variant": "#793100",
+                        "surface-container-high": "#eae7ea",
+                        "error": "#ba1a1a",
+                        "inverse-on-surface": "#f3f0f2",
+                        "outline": "#717786",
+                        "on-primary-fixed": "#001b3e",
+                        "secondary-fixed": "#dbe4ed",
+                        "surface-container-lowest": "#ffffff",
+                        "on-tertiary": "#ffffff",
+                        "primary-fixed": "#d6e3ff",
+                        "surface-variant": "#e4e2e4",
+                        "secondary-container": "#d8e1ea",
+                        "primary-container": "#0073e0",
+                        "secondary": "#575f67",
+                        "outline-variant": "#c0c6d6",
+                        "primary-fixed-dim": "#aac7ff",
+                        "on-primary": "#ffffff",
+                        "on-background": "#1b1b1d",
+                        "surface-dim": "#dcd9dc",
+                        "surface-container-highest": "#e4e2e4",
+                        "on-surface-variant": "#414754",
+                        "on-secondary-container": "#5b646b",
+                        "surface-container-low": "#f6f3f5",
+                        "tertiary-fixed-dim": "#ffb691",
+                        "tertiary": "#9a4100",
+                        "background": "#fcf8fb",
+                        "surface-tint": "#005db8",
+                        "surface-container": "#f0edef",
+                        "on-secondary": "#ffffff",
+                        "on-primary-container": "#fefcff",
+                        "on-tertiary-container": "#fffbff",
+                        "primary": "#005ab3",
+                        "surface-bright": "#fcf8fb",
+                        "on-secondary-fixed-variant": "#3f484f",
+                        "on-surface": "#1b1b1d",
+                        "inverse-surface": "#303032",
+                        "secondary-fixed-dim": "#bfc8d0",
+                        "on-error": "#ffffff",
+                        "surface": "#fcf8fb",
+                        "on-primary-fixed-variant": "#00468d",
+                        "error-container": "#ffdad6",
+                        "tertiary-fixed": "#ffdbcb",
+                        "on-error-container": "#93000a",
+                        "tertiary-container": "#c25300",
+                        "on-tertiary-fixed": "#341100",
+                        "on-secondary-fixed": "#141d23",
+                        "inverse-primary": "#aac7ff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "margin-desktop": "40px",
+                        "container-max": "1440px",
+                        "gutter": "24px",
+                        "unit": "8px",
+                        "margin-mobile": "16px"
+                    },
+                    "fontFamily": {
+                        "headline-lg-mobile": ["Manrope"],
+                        "headline-md": ["Manrope"],
+                        "label-md": ["Manrope"],
+                        "display-lg": ["Manrope"],
+                        "body-lg": ["Manrope"],
+                        "label-sm": ["Manrope"],
+                        "headline-lg": ["Manrope"],
+                        "body-md": ["Manrope"]
+                    },
+                    "fontSize": {
+                        "headline-lg-mobile": ["28px", { "lineHeight": "1.3", "fontWeight": "700" }],
+                        "headline-md": ["24px", { "lineHeight": "1.4", "fontWeight": "600" }],
+                        "label-md": ["14px", { "lineHeight": "1.2", "letterSpacing": "0.01em", "fontWeight": "600" }],
+                        "display-lg": ["48px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "800" }],
+                        "body-lg": ["18px", { "lineHeight": "1.6", "fontWeight": "400" }],
+                        "label-sm": ["12px", { "lineHeight": "1.2", "fontWeight": "500" }],
+                        "headline-lg": ["32px", { "lineHeight": "1.3", "letterSpacing": "-0.01em", "fontWeight": "700" }],
+                        "body-md": ["16px", { "lineHeight": "1.6", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Manrope', sans-serif;
+            background-color: #fcf8fb; /* background color */
+            color: #1b1b1d; /* on-surface color */
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .icon-fill {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+
+        /* Glassmorphism utilities */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface antialiased overflow-x-hidden selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopAppBar -->
+<header class="fixed top-0 right-0 w-[calc(100%-16rem)] h-16 bg-surface/60 dark:bg-surface-dim/60 backdrop-blur-md text-primary dark:text-primary-fixed-dim font-label-md text-label-md bg-transparent flat no shadows flex items-center justify-between px-gutter w-full transition-all duration-300 z-40 hidden md:flex">
+<div class="flex items-center gap-4 flex-1">
+<span class="font-headline-md text-headline-md font-extrabold text-primary dark:text-primary-fixed-dim hidden">Aria Music</span>
+<div class="relative w-full max-w-md">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+<input class="w-full h-10 pl-10 pr-4 rounded-full bg-surface-container-low border-none text-on-surface focus:ring-2 focus:ring-primary focus:bg-surface-container-lowest transition-colors font-body-md text-body-md placeholder:text-on-surface-variant" placeholder="Search..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high/50 dark:hover:bg-surface-container-highest/50 transition-colors">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high/50 dark:hover:bg-surface-container-highest/50 transition-colors">
+<span class="material-symbols-outlined" data-icon="cast">cast</span>
+</button>
+<div class="w-8 h-8 rounded-full overflow-hidden ml-2 ring-2 ring-primary/20">
+<img alt="User Profile Avatar" class="w-full h-full object-cover" data-alt="A small, circular avatar portrait of a modern user in a bright, minimalist setting. The person has a friendly expression. The lighting is soft and natural, contributing to a clean, professional aesthetic suitable for a high-end music streaming app profile picture." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDAE5e-1_YGyoJ1AVzilc6EW12FhxR-JgQyHUvFuQlZjgKMoPWDraerlK9zfUrU-yYFQfK8NtsNFnDgyNFshnid2z8hi4Dy7VvQTik__Q_lgxHqspHgnYv9_rgHQNnLMzPlEGm5GH-pp-xLQknGe47yvUSaWO4nukzA2ui4yUphx9S05f9v2SVee_jJ75_PTtR8rKw-Ss-1Xel1AtpuYe3mSOyqZ18WCW5hFCcFEcRYDTSPwCWviB8XLw"/>
+</div>
+</div>
+</header>
+<!-- SideNavBar -->
+<nav class="h-screen w-64 fixed left-0 top-0 bg-surface/80 dark:bg-surface-dim/80 backdrop-blur-xl text-primary dark:text-primary-fixed-dim font-body-md text-body-md bg-surface/60 dark:bg-surface-dim/60 shadow-sm flex flex-col h-full py-margin-desktop z-50 hidden md:flex border-r border-outline-variant/20">
+<div class="px-gutter mb-8">
+<h1 class="font-headline-md text-headline-md font-bold text-primary dark:text-primary-fixed-dim flex items-center gap-2">
+<span class="material-symbols-outlined icon-fill text-primary text-[28px]">graphic_eq</span>
+                Music Studio
+            </h1>
+<p class="text-label-sm font-label-sm text-secondary mt-1 ml-9 uppercase tracking-wider">Premium Pro</p>
+</div>
+<ul class="flex flex-col gap-1 px-4 flex-1">
+<li>
+<a class="flex items-center gap-4 px-4 py-3 rounded-lg text-secondary dark:text-secondary-fixed-dim hover:bg-surface-container-low dark:hover:bg-surface-container-highest transition-colors active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="library_music">library_music</span>
+                    Library
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-4 px-4 py-3 rounded-lg text-primary dark:text-primary-fixed-dim font-bold border-r-4 border-primary bg-primary-container/10 active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined icon-fill" data-icon="explore">explore</span>
+                    Discovery
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-4 px-4 py-3 rounded-lg text-secondary dark:text-secondary-fixed-dim hover:bg-surface-container-low dark:hover:bg-surface-container-highest transition-colors active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="person">person</span>
+                    Artists
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-4 px-4 py-3 rounded-lg text-secondary dark:text-secondary-fixed-dim hover:bg-surface-container-low dark:hover:bg-surface-container-highest transition-colors active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="album">album</span>
+                    Albums
+                </a>
+</li>
+</ul>
+<div class="mt-auto px-4 border-t border-outline-variant/20 pt-4">
+<ul class="flex flex-col gap-1">
+<li>
+<a class="flex items-center gap-4 px-4 py-3 rounded-lg text-secondary dark:text-secondary-fixed-dim hover:bg-surface-container-low dark:hover:bg-surface-container-highest transition-colors active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+                        Settings
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-4 px-4 py-3 rounded-lg text-secondary dark:text-secondary-fixed-dim hover:bg-surface-container-low dark:hover:bg-surface-container-highest transition-colors active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="help_outline">help_outline</span>
+                        Support
+                    </a>
+</li>
+</ul>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="md:ml-64 pt-16 md:pt-24 px-margin-mobile md:px-margin-desktop pb-32 min-h-screen">
+<!-- Hero Section -->
+<section class="relative w-full h-[400px] md:h-[500px] rounded-[24px] overflow-hidden mb-12 shadow-sm group">
+<div class="absolute inset-0 bg-cover bg-center w-full h-full transform transition-transform duration-700 group-hover:scale-105" data-alt="A visually stunning abstract landscape representing ethereal soundscapes. Soft, flowing gradients in light blues, pinks, and pristine whites create a sense of vast, airy space. Delicate geometric shapes float mid-air, catching bright, studio-quality light. The mood is calm, creative, and highly premium, fitting a modern light-themed music app header." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCq8TmV3pgEhY95dQ1sQI7NApbe2Q8i66G7WCrqmtivNOPrGylXhBRWyui7QxSc2V1DW2UZJVvhlP_IIDqfmqKd6IoCGoKnpxBrLUF3bxxZneJdlIcHFB2oE5AH-dYHVtGhGB3x9pvwqESvuQbzvYUnmPjZkhlJnWNqZSUAWmCwuvQrTiLjBQRf2mVy5Ih-ZygyXC5nvDIGS4wp-GbrpCy5Lpm8oe-NQrHPH9K4i4k1aw3paYgCrBH5JQ')"></div>
+<!-- Gradient Overlay for legibility -->
+<div class="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"></div>
+<div class="absolute inset-0 p-8 md:p-12 flex flex-col justify-end">
+<div class="glass-panel p-6 rounded-2xl max-w-xl self-start">
+<span class="inline-block px-3 py-1 rounded-full bg-primary/20 text-primary-fixed-dim font-label-sm text-label-sm mb-3 font-semibold uppercase tracking-wider">Featured Playlist</span>
+<h2 class="font-display-lg text-display-lg md:text-[56px] text-white font-extrabold mb-2 leading-tight">Ethereal Soundscapes</h2>
+<p class="font-body-md text-body-md text-white/90 mb-6 max-w-md">Drift into a curated journey of ambient textures and light melodies designed for deep focus.</p>
+<div class="flex items-center gap-4">
+<button class="h-12 px-6 bg-primary text-on-primary rounded-full font-label-md text-label-md flex items-center gap-2 hover:bg-primary/90 transition-all shadow-[0_4px_14px_rgba(0,90,179,0.39)] hover:shadow-[0_6px_20px_rgba(0,90,179,0.23)] active:scale-95">
+<span class="material-symbols-outlined icon-fill">play_arrow</span>
+                            Play Now
+                        </button>
+<button class="h-12 w-12 flex items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-md border border-white/30 hover:bg-white/30 transition-colors">
+<span class="material-symbols-outlined">favorite_border</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+<!-- New Releases Carousel -->
+<section class="mb-12">
+<div class="flex items-center justify-between mb-6">
+<h3 class="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg text-on-surface">New Releases</h3>
+<div class="flex gap-2">
+<button class="w-10 h-10 rounded-full flex items-center justify-center bg-surface-container text-on-surface-variant hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined">chevron_left</span>
+</button>
+<button class="w-10 h-10 rounded-full flex items-center justify-center bg-surface-container text-on-surface-variant hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined">chevron_right</span>
+</button>
+</div>
+</div>
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
+<!-- Card 1 -->
+<div class="group cursor-pointer flex flex-col gap-3">
+<div class="relative aspect-square rounded-xl overflow-hidden shadow-sm group-hover:shadow-md transition-shadow">
+<img alt="Album Cover" class="w-full h-full object-cover transform transition-transform duration-500 group-hover:scale-105" data-alt="An artistic album cover featuring a minimalist photograph of morning dew on a delicate leaf, with crisp white typography. The overall color palette is light and fresh, with hints of soft green and off-white. The lighting is bright and natural, conveying a serene mood." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA5Eo6ugfDb7YKYcrZDfKLkZ54Z6DrKpP-TwE9Oc4STzhyD2jbMdNxySeqZcsZ24tB4Jc-3hs4paYeBp9Mnl9W0trZvVjaZyxMfuSZCRr1WkwtjyLZnxidBaX8B9hxY_HlJQA-e7SzuhCTkRJ9HfJRgeNh1Ox8UVmNTINZdWIx-usb-vTaGBNQIsDWHlkD8S-2si-rJ5YOq0Ba2GkmMZjjNjKQVhcZZlWtmUolutm3eBUVB3uwem5_WJA"/>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+<button class="w-12 h-12 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
+<span class="material-symbols-outlined icon-fill">play_arrow</span>
+</button>
+</div>
+</div>
+<div>
+<h4 class="font-label-md text-label-md text-on-surface truncate">Morning Dew</h4>
+<p class="font-label-sm text-label-sm text-secondary truncate">Aura Minimalist</p>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="group cursor-pointer flex flex-col gap-3">
+<div class="relative aspect-square rounded-xl overflow-hidden shadow-sm group-hover:shadow-md transition-shadow">
+<img alt="Album Cover" class="w-full h-full object-cover transform transition-transform duration-500 group-hover:scale-105" data-alt="A modern album cover showing an abstract geometric shape in soft pastel colors like peach and pale blue against a pristine white background. The design is clean, high-end, and perfectly aligned with a light-mode UI aesthetic. The mood is upbeat yet sophisticated." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDGTQv6d_SyXAloKGQB_1bATirXYsz3IO7G3djwyI1wTjtI80cDqYqZYUzadfeAotO4zdWd2qOUNAfw9Zkc1umU3srpMKmgvRY7SqbJWm5NJlPPMkuO-hXa3f8neilIJn5wvqZy-YLMXK7CGvFjp9OEYDgyYaJUJrsFVkQpY5sIN1gfP0dJGT5FXYvCXGT_KH8RZGExJ-QjYOElrTHu7B3wxLVW6KF2z5trkW3yLy1p4qp03Zih53HhWA"/>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+<button class="w-12 h-12 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
+<span class="material-symbols-outlined icon-fill">play_arrow</span>
+</button>
+</div>
+</div>
+<div>
+<h4 class="font-label-md text-label-md text-on-surface truncate">Pastel Grooves</h4>
+<p class="font-label-sm text-label-sm text-secondary truncate">The Shape Trio</p>
+</div>
+</div>
+<!-- Card 3 -->
+<div class="group cursor-pointer flex flex-col gap-3">
+<div class="relative aspect-square rounded-xl overflow-hidden shadow-sm group-hover:shadow-md transition-shadow">
+<img alt="Album Cover" class="w-full h-full object-cover transform transition-transform duration-500 group-hover:scale-105" data-alt="A sophisticated album cover featuring a close-up of a classical instrument like a cello, but stylized with modern lighting and a stark white background. The image has high contrast, clear details, and a premium, clean look suitable for a professional music platform." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBOxJsLuL9h3dVtwyn3z1QWiNpxiOrjrM7TqN4E9iTVI6hpkw19791DZC2BfhC2JfKe1X35oMdOI2-iG3At-vLAZvUUQcI7nUT9kQ7l6ogEjQrYXtQanqxmZ9EP5lIJBzT75H93mrEY_0Ve4CEDeFyrI45pfQGCAZEhnEbKbhwjsBYzNT8SMP1RNyT8Zd-hZa3LHlh2OX-DsCTSFVfEf0yGajx9KFaRfQNqVDZ656iC3ypLceMdOMgU4A"/>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+<button class="w-12 h-12 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
+<span class="material-symbols-outlined icon-fill">play_arrow</span>
+</button>
+</div>
+</div>
+<div>
+<h4 class="font-label-md text-label-md text-on-surface truncate">Acoustic Echoes</h4>
+<p class="font-label-sm text-label-sm text-secondary truncate">Strings Attached</p>
+</div>
+</div>
+<!-- Card 4 -->
+<div class="group cursor-pointer flex flex-col gap-3 hidden md:flex">
+<div class="relative aspect-square rounded-xl overflow-hidden shadow-sm group-hover:shadow-md transition-shadow">
+<img alt="Album Cover" class="w-full h-full object-cover transform transition-transform duration-500 group-hover:scale-105" data-alt="An album cover displaying a vast, serene ocean landscape under a bright, clear sky. The colors are predominantly light blues and soft whites. The photography is high-resolution, conveying a sense of calm and clarity that matches a premium light-theme UI." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAWwHLc0UtFe-WCc8SkSey0jf28p7p5NkBHejBgPNsAeD7zOCHjuKEoTNLZQfxoxTfQ-_XBXPkHOHDXHZUBUfwdFlC1JIvGojH7NeMGgaSicg6BG5-A07-7OpaqymQ0BuJICo7IXF57O3pbRqHc3HTbwvHylPZ-rFOCwDzRkcZNVW9rXxBq0qFPVcHeYAHsmX1e6vsk8AxOYU5iey7W1lTbEG78c7Q7wb86QAtXqfDDWKxMUFFs4QSAUw"/>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+<button class="w-12 h-12 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
+<span class="material-symbols-outlined icon-fill">play_arrow</span>
+</button>
+</div>
+</div>
+<div>
+<h4 class="font-label-md text-label-md text-on-surface truncate">Oceanic Drift</h4>
+<p class="font-label-sm text-label-sm text-secondary truncate">Horizon Deep</p>
+</div>
+</div>
+<!-- Card 5 -->
+<div class="group cursor-pointer flex flex-col gap-3 hidden lg:flex">
+<div class="relative aspect-square rounded-xl overflow-hidden shadow-sm group-hover:shadow-md transition-shadow">
+<img alt="Album Cover" class="w-full h-full object-cover transform transition-transform duration-500 group-hover:scale-105" data-alt="An artistic album cover featuring a sleek, modern architectural interior bathed in natural sunlight. The sharp lines and bright white surfaces create a highly organized, minimalist aesthetic. The overall mood is structured, airy, and professional." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBtkUT-UVTOJ5yJOUDGnikiD6ZTkDFz98RDiLESv66tQF0mEvukBliBd31Bq5ndjHNgkijaDz0h-xrP6ipTHoZt8ZZbpMRr-hLFyjVjKUF-6WqNxibSP61DitBklwDk2mvBG_97PTWgOvUHG5AqoC2PpBeeZJGpIIXLLgT9VCBtubfpVfZ0NMeeVMb_-DOuq5_-rYQvYnAYZ3sittkk0rOXv7tKyOVqOMPzFZ2Lx8my4D78nu97LUibWw"/>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+<button class="w-12 h-12 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
+<span class="material-symbols-outlined icon-fill">play_arrow</span>
+</button>
+</div>
+</div>
+<div>
+<h4 class="font-label-md text-label-md text-on-surface truncate">Structured Silence</h4>
+<p class="font-label-sm text-label-sm text-secondary truncate">Urban Soundscape</p>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 left-0 right-0 h-24 bg-surface/90 dark:bg-surface-container-lowest/90 backdrop-blur-2xl text-primary dark:text-primary-fixed-dim font-label-sm text-label-sm bg-surface-container-low dark:bg-surface-container-high shadow-[0_-8px_30px_rgba(0,0,0,0.04)] shadow-lg flex items-center justify-between px-margin-desktop z-50">
+<button class="flex flex-col items-center gap-1 text-on-surface-variant dark:text-outline hover:opacity-80 transition-opacity active:scale-90">
+<span class="material-symbols-outlined" data-icon="library_music">library_music</span>
+<span>Library</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-primary dark:text-primary-fixed-dim font-bold hover:opacity-80 transition-opacity active:scale-90">
+<span class="material-symbols-outlined icon-fill" data-icon="explore">explore</span>
+<span>Discovery</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-on-surface-variant dark:text-outline hover:opacity-80 transition-opacity active:scale-90">
+<span class="material-symbols-outlined" data-icon="person">person</span>
+<span>Artists</span>
+</button>
+</nav>
+</body></html>

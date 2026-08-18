@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ShortcutDefinition, ShortcutId, ShortcutStatus } from '../native/shortcuts';
 import { receiverState } from '../test/fixtures';
+import type { ServiceConfig } from '../ui/useServiceManager';
 import { DesktopShell } from './DesktopShell';
 
 type ShortcutActions = Record<ShortcutId, () => void | Promise<void>>;
@@ -22,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   api: {
     state: null as unknown as OControlState,
     presets: [],
+    queue: { currentIndex: -1, items: [] },
     serviceReachable: true,
     pendingCommand: null as string | null,
     pendingCommandFor: vi.fn((domain: string) => {
@@ -38,7 +40,7 @@ const mocks = vi.hoisted(() => ({
   },
   manager: {
     status: { mode: 'external', url: 'http://localhost:8787', healthy: true, error: null },
-    config: { serviceMode: 'external' },
+    config: { serviceMode: 'external' } as ServiceConfig,
     updateConfig: vi.fn(),
     isTauri: false,
   },
@@ -80,8 +82,19 @@ vi.mock('../components/NetList', () => ({
     return <section aria-label="Library">Library unavailable</section>;
   },
 }));
+vi.mock('../components/LibraryHome', () => ({
+  LibraryHome: ({ onOpenLibrary }: { onOpenLibrary: () => void }) => (
+    <section aria-label="Home"><h2>Library Home</h2><button onClick={onOpenLibrary}>Browse from Home</button></section>
+  ),
+}));
 
 describe('DesktopShell navigation', () => {
+  function renderPlayerShell() {
+    const view = render(<DesktopShell />);
+    fireEvent.click(screen.getByRole('button', { name: 'Player' }));
+    return view;
+  }
+
   beforeEach(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     mocks.api.state = receiverState();
@@ -115,49 +128,112 @@ describe('DesktopShell navigation', () => {
     mocks.shortcuts.toggle.mockReset();
   });
 
-  it('keeps Volume and Input out of the default player', () => {
+  it('opens on Home with the persistent player available', () => {
     render(<DesktopShell />);
 
-    expect(screen.getByLabelText('Now playing')).toBeInTheDocument();
-    expect(screen.queryByRole('region', { name: 'Volume' })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Input picker')).not.toBeInTheDocument();
-    expect(screen.queryByText('Network')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('region', { name: 'Home' })).toHaveTextContent('Library Home');
+    expect(screen.getByLabelText('Persistent player')).toBeVisible();
+    expect(screen.getByRole('img', { name: 'Blue in Green artwork' })).toHaveAttribute(
+      'src',
+      expect.stringMatching(/^http:\/\/localhost:8787\/cover-art\?t=/),
+    );
+    expect(screen.getByRole('slider', { name: 'Mini player volume' })).toHaveValue('22');
   });
 
-  it('exposes the active destination and current volume to assistive technology', () => {
+  it('keeps the mini-player artwork fallback visible when cover art fails', () => {
     render(<DesktopShell />);
 
-    const remote = screen.getByRole('button', { name: 'Remote' });
-    const volume = screen.getByRole('button', { name: 'Volume' });
+    const artwork = screen.getByRole('img', { name: 'Blue in Green artwork' });
+    fireEvent.error(artwork);
+
+    expect(artwork).not.toBeVisible();
+    expect(document.querySelector('.v2-mini-art > span')).toBeVisible();
+  });
+
+  it('controls receiver volume from the mini player', async () => {
+    render(<DesktopShell />);
+
+    const slider = screen.getByRole('slider', { name: 'Mini player volume' });
+    fireEvent.change(slider, { target: { value: '34' } });
+    fireEvent.pointerUp(slider);
+
+    await waitFor(() => expect(mocks.api.command).toHaveBeenCalledWith(
+      '/commands/volume',
+      { value: 34 },
+      'volume:set',
+    ));
+  });
+
+  it('opens Player with combined playback and volume controls', () => {
+    renderPlayerShell();
+
+    const player = screen.getByRole('button', { name: 'Player' });
     const library = screen.getByRole('button', { name: 'Library' });
     const settings = screen.getByRole('button', { name: 'Settings' });
-    expect(remote).toHaveAttribute('aria-pressed', 'true');
-    expect(remote).toHaveClass('active');
-    expect(volume).toHaveAttribute('aria-pressed', 'false');
-    expect(volume).not.toHaveClass('active');
-    expect(volume).toHaveAccessibleDescription('Vol 22');
+    expect(player).toHaveAttribute('aria-pressed', 'true');
+    expect(player).toHaveClass('active');
     expect(library).toHaveAttribute('aria-pressed', 'false');
     expect(settings).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByLabelText('Now playing')).toBeInTheDocument();
+    expect(screen.getByRole('slider', { name: 'Player volume' })).toHaveValue('22');
   });
 
-  it('describes muted volume without changing the stable navigation name', () => {
+  it('returns from Player to Home and opens Library from Home', () => {
+    renderPlayerShell();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+    expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('region', { name: 'Home' })).toHaveTextContent('Library Home');
+    expect(screen.getByLabelText('Persistent player')).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Browse from Home' }));
+    expect(screen.getByRole('region', { name: 'Library' })).toBeVisible();
+  });
+
+  it('shows the active device custom name only in Audio Signal', () => {
+    mocks.manager.config = {
+      serviceMode: 'external',
+      activeDeviceId: 'living-room',
+      devices: [{
+        id: 'living-room',
+        name: 'Studio Receiver',
+        host: '192.168.1.104',
+        port: 60128,
+        source: 'manual',
+      }],
+    };
+
+    renderPlayerShell();
+
+    expect(screen.getByText('Studio Receiver')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Studio Receiver' })).not.toBeInTheDocument();
+  });
+
+  it('shows the configured DAC chip in Audio Signal', () => {
+    mocks.manager.config = { serviceMode: 'external', digitalToAnalog: 'ESS Sabre 9038PRO' };
+    renderPlayerShell();
+    expect(screen.getByText('ESS Sabre 9038PRO')).toBeVisible();
+  });
+
+  it('surfaces each source-file metric independently', () => {
+    mocks.api.state = receiverState({
+      nowPlaying: { format: 'FLAC', sampleRate: '44.1kHz', bitDepth: '16bit', fileSize: 52428800 },
+    });
+    renderPlayerShell();
+
+    const sourceFile = screen.getByLabelText('Playback information');
+    expect(sourceFile).toHaveTextContent('CodecFLAC');
+    expect(sourceFile).toHaveTextContent('Bit depth16bit');
+    expect(sourceFile).toHaveTextContent('Sample rate44.1kHz');
+    expect(sourceFile).toHaveTextContent('File size50 MB');
+  });
+
+  it('shows the mute state inside Player', () => {
     mocks.api.state = receiverState({ muted: true });
-    render(<DesktopShell />);
+    renderPlayerShell();
 
-    expect(screen.getByRole('button', { name: 'Volume' })).toHaveAccessibleDescription('Muted');
-  });
-
-  it('opens Volume and returns to Remote', () => {
-    render(<DesktopShell />);
-
-    const volume = screen.getByRole('button', { name: 'Volume' });
-    fireEvent.click(volume);
-    expect(volume).toHaveAttribute('aria-pressed', 'true');
-    expect(volume).toHaveClass('active');
-    expect(screen.getByRole('button', { name: 'Remote' })).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByRole('region', { name: 'Volume' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Remote' }));
-    expect(screen.queryByRole('region', { name: 'Volume' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Unmute' })).toBeInTheDocument();
   });
 
   it('opens Input from Settings rather than the main rail', () => {
@@ -176,7 +252,7 @@ describe('DesktopShell navigation', () => {
     );
   });
 
-  it('shows the collected global shortcut registration diagnostics in Settings', async () => {
+  it('keeps shortcut registration diagnostics out of Settings', async () => {
     mocks.shortcuts.register.mockImplementation(async (actions) => {
       mocks.shortcuts.actions.push(actions);
       return [{ ...mocks.shortcuts.definitions[0], registered: false, error: 'Already registered' }];
@@ -185,9 +261,8 @@ describe('DesktopShell navigation', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
 
-    expect(
-      await screen.findByRole('status', { name: 'Volume up: Failed — Already registered' }),
-    ).toBeInTheDocument();
+    await waitFor(() => expect(mocks.shortcuts.register).toHaveBeenCalledOnce());
+    expect(screen.queryByRole('heading', { name: 'Global shortcuts' })).not.toBeInTheDocument();
   });
 
   it('registers shortcuts once while handlers follow the latest playback and service actions', async () => {
@@ -271,12 +346,7 @@ describe('DesktopShell navigation', () => {
     secondRegistration.resolve([
       { ...mocks.shortcuts.definitions[0], registered: true, error: null },
     ]);
-    fireEvent.click(secondView.getByRole('button', { name: 'Settings' }));
-
-    expect(
-      await secondView.findByRole('status', { name: 'Volume up: Registered' }),
-    ).toBeInTheDocument();
-    expect(secondView.queryByRole('status', { name: /Stale failure/ })).not.toBeInTheDocument();
+    expect(secondView.queryByRole('heading', { name: 'Global shortcuts' })).not.toBeInTheDocument();
   });
 
   it('neutralizes stale handlers and recovers the next mount after cleanup rejects', async () => {
@@ -312,9 +382,7 @@ describe('DesktopShell navigation', () => {
     );
 
     fireEvent.click(secondView.getByRole('button', { name: 'Settings' }));
-    expect(
-      await secondView.findByRole('status', { name: 'Volume up: Registered' }),
-    ).toBeInTheDocument();
+    expect(secondView.queryByRole('heading', { name: 'Global shortcuts' })).not.toBeInTheDocument();
   });
 
   it('keeps Input open on failure and closes it after a successful retry', async () => {
@@ -344,43 +412,44 @@ describe('DesktopShell navigation', () => {
     expect(library).toHaveAttribute('aria-pressed', 'true');
     expect(library).toHaveClass('active');
     expect(screen.getByRole('region', { name: 'Library' })).toHaveTextContent('Library unavailable');
-    expect(mocks.netListProps).toEqual({
+    expect(mocks.netListProps).toEqual(expect.objectContaining({
       state: mocks.api.state,
       pendingCommand: 'list:query',
       command: mocks.api.command,
       serviceUrl: 'http://localhost:8787',
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Remote' }));
+    }));
+    fireEvent.click(screen.getByRole('button', { name: 'Player' }));
     expect(screen.queryByRole('region', { name: 'Library' })).not.toBeInTheDocument();
     expect(screen.getByLabelText('Now playing')).toBeInTheDocument();
   });
 
-  it('uses a separate panel dock without duplicating the command rail dock', () => {
-    const { container } = render(<DesktopShell />);
+  it('uses the V2 sidebar without a separate volume panel dock', () => {
+    const { container } = renderPlayerShell();
 
     expect(container.querySelectorAll('.panel-dock')).toHaveLength(0);
-    expect(container.querySelectorAll('.rail-dock')).toHaveLength(1);
-    fireEvent.click(screen.getByRole('button', { name: 'Volume' }));
-    expect(container.querySelectorAll('.panel-dock')).toHaveLength(1);
-    expect(container.querySelectorAll('.rail-dock')).toHaveLength(1);
+    expect(container.querySelectorAll('.v2-sidebar')).toHaveLength(1);
+    expect(container.querySelectorAll('.rail-dock')).toHaveLength(0);
+    expect(screen.getByRole('slider', { name: 'Player volume' })).toBeInTheDocument();
+    expect(container.querySelectorAll('.panel-dock')).toHaveLength(0);
+    expect(container.querySelectorAll('.v2-sidebar')).toHaveLength(1);
     expect(globalStyles).toMatch(
-      /\.popover\.panel-active\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) auto auto;/,
+      /\.v2-shell\s*\{[^}]*grid-template-columns:\s*228px minmax\(0,\s*1fr\);/,
     );
   });
 
   it('disables receiver actions offline but keeps Settings enabled', () => {
     mocks.api.serviceReachable = false;
     mocks.api.state = receiverState({ connected: false, playback: 'unknown' });
-    render(<DesktopShell />);
+    renderPlayerShell();
 
     expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Volume' })).toBeDisabled();
+    expect(screen.getByRole('slider', { name: 'Player volume' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Settings' })).toBeEnabled();
   });
 
   it('keeps playback enabled while only Power is pending', () => {
     mocks.api.pendingCommand = 'power';
-    render(<DesktopShell />);
+    renderPlayerShell();
 
     expect(screen.getByRole('button', { name: 'Standby' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled();
@@ -388,10 +457,8 @@ describe('DesktopShell navigation', () => {
 
   it('keeps volume controls enabled while only Playback is pending', () => {
     mocks.api.pendingCommand = 'playback:pause';
-    render(<DesktopShell />);
+    renderPlayerShell();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Volume' }));
-    expect(screen.getByRole('button', { name: 'Volume down' })).toBeEnabled();
-    expect(screen.getByRole('slider', { name: 'Volume' })).toBeEnabled();
+    expect(screen.getByRole('slider', { name: 'Player volume' })).toBeEnabled();
   });
 });

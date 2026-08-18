@@ -147,6 +147,25 @@ describe('useOControlApi', () => {
     expect(MockWebSocket.instances[1].close).toHaveBeenCalledOnce();
   });
 
+  it('polls receiver state so power changes are detected without a socket event', async () => {
+    vi.useFakeTimers();
+    const { result, unmount } = renderHook(() => useOControlApi('http://localhost:8787'));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.serviceReachable).toBe(true);
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(receiverState({ power: 'off' })));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    expect(result.current.state.power).toBe('off');
+    expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/state'))).toBe(true);
+    unmount();
+  });
+
   it('ignores old socket events after switching service URLs', async () => {
     const { result, rerender, unmount } = renderHook(
       ({ serviceUrl }) => useOControlApi(serviceUrl),

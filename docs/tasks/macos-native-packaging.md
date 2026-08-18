@@ -109,7 +109,7 @@ External service mode:
 
 ## Decisions Made During Implementation
 
-- **Sidecar Packaging Strategy**: The Node/Fastify service is bundled into a single CommonJS file using `esbuild` and packaged into a standalone macOS executable using `@yao-pkg/pkg`. Node.js SEA (Single Executable Application) was attempted but failed due to Homebrew's Node.js 26 missing the required `NODE_SEA_FUSE` sentinel. `pkg` was chosen as a reliable alternative.
+- **Sidecar Packaging Strategy**: The Node/Fastify service is bundled into a single CommonJS file with `esbuild`. The app ships that bundle alongside a private Bun arm64 runtime and a tiny launcher sidecar. This keeps the service self-contained while avoiding `@yao-pkg/pkg`'s arm64 Node source compilation fallback when its runtime cache is unavailable.
 - **Service Configuration**: Configuration is managed by the Tauri frontend and saved persistently via `tauri-plugin-store` in `settings.json`. The frontend communicates with the Rust backend via a new `useServiceManager` hook to dynamically pass `ONKYO_HOST`, `MOCK_MODE`, and other configurations when spawning the sidecar.
 - **Port Strategy**: The sidecar uses port `8787` by default. Dynamic fallback was omitted for simplicity in the MVP, but the Rust backend health-checks the port before spawning to avoid conflicts. If an external service is already running on `8787`, the local manager will detect it as healthy and skip spawning.
 - **Pino Logger Modification**: Pino's asynchronous file transport (which uses `worker_threads`) caused issues with the bundled `pkg` executable (`MODULE_NOT_FOUND` for `worker.js`). The logging was simplified to standard synchronous stdout, which works perfectly within the Tauri sidecar log capture.

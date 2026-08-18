@@ -4,6 +4,10 @@ import { receiverState } from '../test/fixtures';
 import { NowPlaying } from './NowPlaying';
 
 describe('NowPlaying', () => {
+  it('does not repeat source quality below the track metadata', () => {
+    render(<NowPlaying playback="playing" nowPlaying={receiverState().nowPlaying} serviceUrl="http://localhost:8787" />);
+    expect(document.querySelector('.track-format')).toBeNull();
+  });
   it('renders cover art inside the stable artwork frame', () => {
     const state = receiverState();
     render(
@@ -15,6 +19,20 @@ describe('NowPlaying', () => {
     );
     expect(screen.getByTestId('artwork-frame')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Cover artwork' })).toBeInTheDocument();
+  });
+
+  it('gives track identity and progress an accessible hierarchy', () => {
+    const state = receiverState({ nowPlaying: { trackNumber: '5' } });
+    render(
+      <NowPlaying playback={state.playback} nowPlaying={state.nowPlaying} serviceUrl="http://localhost:8787" />,
+    );
+
+    expect(screen.queryByRole('heading', { name: 'Now Playing' })).not.toBeInTheDocument();
+    expect(screen.getByText('Now playing')).toBeVisible();
+    expect(screen.getByText('Blue in Green')).toHaveClass('track-title');
+    expect(screen.getByText('Miles Davis')).toHaveClass('track-artist');
+    expect(screen.getByText(/Kind of Blue/)).toHaveTextContent('Kind of Blue · Track 5');
+    expect(screen.getByRole('progressbar', { name: 'Track progress' })).toHaveAttribute('aria-valuenow', '31');
   });
 
   it('falls back to the fixed placeholder when the image fails', () => {
@@ -164,5 +182,16 @@ describe('NowPlaying', () => {
       />,
     );
     expect(screen.getByText(longTitle)).toHaveAttribute('title', longTitle);
+  });
+
+  it('renders a stable placeholder for malformed receiver time values', () => {
+    const state = receiverState({
+      nowPlaying: { ...receiverState().nowPlaying, currentTime: 'NaN:--', totalTime: 'invalid' },
+    });
+    render(
+      <NowPlaying playback={state.playback} nowPlaying={state.nowPlaying} serviceUrl="http://localhost:8787" />,
+    );
+
+    expect(screen.getAllByText('--:--')).toHaveLength(2);
   });
 });

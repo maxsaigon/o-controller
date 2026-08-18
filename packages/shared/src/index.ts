@@ -53,6 +53,7 @@ export interface NowPlayingMeta {
   format?: string;
   sampleRate?: string;
   bitDepth?: string;
+  fileSize?: number;
   repeat?: 'off' | 'one' | 'all' | 'unknown';
   shuffle?: 'off' | 'on' | 'unknown';
 }
@@ -68,6 +69,56 @@ export interface NetListState {
   items: NetListItem[];
   cursor: number;
   totalItems: number;
+}
+
+// ─── Music catalog ───────────────────────────────────────────
+export interface MusicTrack {
+  id: string;
+  parentId: string;
+  title: string;
+  artist?: string;
+  album?: string;
+  albumId?: string;
+  artistId?: string;
+  trackNumber?: number;
+  duration?: string;
+  resourceUrl: string;
+  mimeType?: string;
+  albumArtUrl?: string;
+}
+
+export interface MusicAlbum {
+  id: string;
+  title: string;
+  artist?: string;
+  artistId?: string;
+  albumArtUrl?: string;
+  tracks: MusicTrack[];
+}
+
+export interface MusicArtist {
+  id: string;
+  name: string;
+  albums: MusicAlbum[];
+}
+
+export interface MusicCatalog {
+  albums: MusicAlbum[];
+  artists: MusicArtist[];
+}
+
+export interface PlaybackQueueItem {
+  resourceUrl: string;
+  title?: string;
+  artist?: string;
+  album?: string;
+  albumArtURI?: string;
+  size?: number;
+}
+
+export interface PlaybackQueueState {
+  currentIndex: number;
+  items: PlaybackQueueItem[];
 }
 
 export interface OControlState {

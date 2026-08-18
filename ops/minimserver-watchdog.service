@@ -1,0 +1,8 @@
+[Unit]
+Description=Check and recover MinimServer network discovery
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/minimserver-watchdog
